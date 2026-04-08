@@ -1,0 +1,31 @@
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: tickify-sql
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=${SA_PASSWORD}
+    ports:
+      - "1433:1433"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/1433"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: tickify-backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=db;Database=TickifyDb;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True;
+
+      - Jwt__IssuerSigningKey=${JWT_SECRET}
+      - Jwt__ValidIssuer=Tickify
+      - Jwt__ValidAudience=TickifyUsers
+
+      - ASPNETCORE_URLS=http://+:8080
+    ports:
+      - "5000:8080"

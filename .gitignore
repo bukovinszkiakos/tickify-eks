@@ -1,0 +1,44 @@
+# Build
+bin/
+obj/
+
+# User / IDE
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Logs
+*.log
+
+# Environment
+.env
+
+# App settings (sensitive)
+appsettings.Development.json
+appsettings.Local.json
+
+# Rider / JetBrains
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Publish
+publish/
+out/
+
+# Node (ha lesz frontend később)
+node_modules/
+
+# Terraform (KÉSŐBB fontos lesz!)
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
+*.tfvars

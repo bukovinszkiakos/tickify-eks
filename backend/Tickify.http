@@ -1,0 +1,6 @@
+@Tickify_HostAddress = http://localhost:5043
+
+GET {{Tickify_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
