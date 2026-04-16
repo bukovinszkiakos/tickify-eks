@@ -101,6 +101,9 @@ using (var scope = app.Services.CreateScope())
     await roleSeeder.SeedRolesAndAdminAsync();
 }
 
+app.MapGet("/", () => "Tickify API running");
+app.MapGet("/health", () => "healthy");
+
 app.Run();
 
 public partial class Program { }

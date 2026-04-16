@@ -30,15 +30,19 @@ Thumbs.db
 # Docker
 docker-compose.override.yml
 
+
 # Publish
 publish/
 out/
 
-# Node (ha lesz frontend később)
+# Node 
 node_modules/
 
-# Terraform (KÉSŐBB fontos lesz!)
+# Terraform
 .terraform/
 terraform.tfstate
-terraform.tfstate.backup
+terraform.tfstate.*
 *.tfvars
+
+# Kubernetes secrets
+k8s/secret.yaml
