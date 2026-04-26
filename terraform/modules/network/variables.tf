@@ -2,7 +2,7 @@ variable "name" {
   type = string
 }
 
-variable "vpc_id" {
+variable "vpc_cidr" {
   type = string
 }
 
@@ -10,10 +10,15 @@ variable "availability_zones" {
   type = list(string)
 }
 
-variable "vpc_cidr" {
+variable "owner" {
   type = string
 }
 
-variable "route_table_id" {
+variable "environment" {
   type = string
+}
+
+variable "db_subnet_count" {
+  type    = number
+  default = 3
 }

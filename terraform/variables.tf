@@ -12,3 +12,10 @@ variable "db_password" {
 }
 
 
+variable "name" {
+  default = "akos-tickify"
+}
+
+variable "environment" {
+  default = "dev"
+}

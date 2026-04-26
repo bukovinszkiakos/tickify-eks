@@ -1,8 +1,6 @@
-# Build
 bin/
 obj/
 
-# User / IDE
 .vs/
 .vscode/
 *.user
@@ -10,39 +8,28 @@ obj/
 *.userosscache
 *.sln.docstates
 
-# Logs
 *.log
 
-# Environment
 .env
 
-# App settings (sensitive)
 appsettings.Development.json
 appsettings.Local.json
 
-# Rider / JetBrains
 .idea/
 
-# OS files
 .DS_Store
 Thumbs.db
 
-# Docker
 docker-compose.override.yml
 
-
-# Publish
 publish/
 out/
 
-# Node 
 node_modules/
 
-# Terraform
 .terraform/
 terraform.tfstate
 terraform.tfstate.*
 *.tfvars
 
-# Kubernetes secrets
 k8s/secret.yaml

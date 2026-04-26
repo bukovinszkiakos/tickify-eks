@@ -114,16 +114,6 @@ resource "aws_eks_node_group" "this" {
   }
 }
 
-
-data "aws_eks_cluster" "this" {
-  name = aws_eks_cluster.this.name
-}
-
-data "aws_eks_cluster_auth" "this" {
-  name = aws_eks_cluster.this.name
-}
-
-
 resource "aws_iam_openid_connect_provider" "eks" {
   url = aws_eks_cluster.this.identity[0].oidc[0].issuer
 
@@ -228,3 +218,26 @@ resource "aws_iam_role_policy_attachment" "app_pod_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
 }
 
+resource "aws_iam_policy" "s3_upload_policy" {
+  name = "${var.name}-s3-upload-policy"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "${var.s3_bucket_arn}/*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "app_pod_s3_policy" {
+  role       = aws_iam_role.app_pod_role.name
+  policy_arn = aws_iam_policy.s3_upload_policy.arn
+}

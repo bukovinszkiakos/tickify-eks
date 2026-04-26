@@ -24,3 +24,8 @@ variable "min_size" {
   type    = number
   default = 1
 }
+
+variable "s3_bucket_arn" {
+  description = "S3 bucket ARN for uploads"
+  type        = string
+}

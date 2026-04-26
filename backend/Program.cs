@@ -9,6 +9,8 @@ using Tickify.Context;
 using Tickify.Repositories;
 using Tickify.Services;
 using Tickify.Services.Authentication;
+using Amazon.S3;
+using Tickify.Services.FileStorage;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +21,9 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITicketCommentRepository, TicketCommentRepository>();
 builder.Services.AddScoped<ITicketCommentService, TicketCommentService>();
 builder.Services.AddScoped<RoleSeeder>();
+builder.Services.AddAWSService<IAmazonS3>();
+builder.Services.AddDefaultAWSOptions(builder.Configuration.GetAWSOptions());
+builder.Services.AddScoped<IFileStorageService, S3FileStorageService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -71,14 +76,6 @@ builder.Services.AddSwaggerGen(option =>
 
 var app = builder.Build();
 
-app.UseStaticFiles();
-
-app.UseStaticFiles(new StaticFileOptions
-{
-    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(
-        Path.Combine(Directory.GetCurrentDirectory(), "wwwroot/uploads")),
-    RequestPath = "/uploads"
-});
 
 if (app.Environment.IsDevelopment())
 {

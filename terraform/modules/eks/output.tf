@@ -14,5 +14,8 @@ output "app_pod_role_arn" {
   value = aws_iam_role.app_pod_role.arn
 }
 
+output "app_pod_role_name" {
+  value = aws_iam_role.app_pod_role.name
+}
 
 

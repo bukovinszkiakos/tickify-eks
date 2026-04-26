@@ -1,9 +1,7 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Hosting;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
@@ -11,6 +9,7 @@ using Tickify.Context;
 using Tickify.DTOs;
 using Tickify.Models;
 using Tickify.Repositories;
+using Tickify.Services.FileStorage;
 
 namespace Tickify.Services
 {
@@ -21,20 +20,23 @@ namespace Tickify.Services
         private readonly ITicketCommentService _ticketCommentService;
         private readonly ApplicationDbContext _dbContext;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly IFileStorageService _fileStorageService;
 
         public TicketService(
-     ITicketRepository ticketRepository,
-     UserManager<IdentityUser> userManager,
-     ITicketCommentService ticketCommentService,
-     ApplicationDbContext dbContext,
-     IHttpContextAccessor httpContextAccessor)
-        {
-            _ticketRepository = ticketRepository;
-            _userManager = userManager;
-            _ticketCommentService = ticketCommentService;
-            _dbContext = dbContext;
-            _httpContextAccessor = httpContextAccessor;
-        }
+    ITicketRepository ticketRepository,
+    UserManager<IdentityUser> userManager,
+    ITicketCommentService ticketCommentService,
+    ApplicationDbContext dbContext,
+    IHttpContextAccessor httpContextAccessor,
+    IFileStorageService fileStorageService)
+{
+    _ticketRepository = ticketRepository;
+    _userManager = userManager;
+    _ticketCommentService = ticketCommentService;
+    _dbContext = dbContext;
+    _httpContextAccessor = httpContextAccessor;
+    _fileStorageService = fileStorageService;
+}
 
         public async Task<IEnumerable<TicketDto>> GetTicketsForUserAsync(string userId, bool isAdmin)
         {
@@ -84,7 +86,6 @@ namespace Tickify.Services
                 .Where(u => allUserIds.Contains(u.Id))
                 .ToDictionaryAsync(u => u.Id, u => u.UserName);
 
-            var publicHost = Environment.GetEnvironmentVariable("PUBLIC_HOST") ?? "localhost:5000";
 
             var ticketDtos = tickets.Select(t => new TicketDto
             {
@@ -101,9 +102,7 @@ namespace Tickify.Services
                 AssignedTo = t.AssignedTo,
                 AssignedToName = t.AssignedTo != null && userMap.ContainsKey(t.AssignedTo)
                     ? userMap[t.AssignedTo] : null,
-                ImageUrl = !string.IsNullOrEmpty(t.ImageUrl) ? $"http://{publicHost}{t.ImageUrl}" : null,
-                TotalCommentCount = commentCounts.FirstOrDefault(c => c.TicketId == t.Id)?.Total ?? 0,
-                UnreadCommentCount = unreadCounts.FirstOrDefault(u => u.TicketId == t.Id)?.Unread ?? 0
+                ImageUrl = t.ImageUrl
             });
 
             if (!isAdmin && !string.IsNullOrEmpty(userId))
@@ -128,7 +127,6 @@ namespace Tickify.Services
             var isSuperAdmin = user != null && await _userManager.IsInRoleAsync(user, "SuperAdmin");
 
             var isCreator = ticket.CreatedBy == userId;
-            var isAssigned = ticket.AssignedTo == userId;
 
             if (!(isSuperAdmin || isAdmin || isCreator))
                 throw new UnauthorizedAccessException("Not allowed to access this ticket.");
@@ -140,11 +138,6 @@ namespace Tickify.Services
             var assignedToName = ticket.AssignedTo != null
                 ? (await _dbContext.Users.FindAsync(ticket.AssignedTo))?.UserName
                 : null;
-
-            var publicHost = Environment.GetEnvironmentVariable("PUBLIC_HOST");
-            var fullImageUrl = !string.IsNullOrEmpty(ticket.ImageUrl) && !string.IsNullOrEmpty(publicHost)
-                ? $"http://{publicHost}{ticket.ImageUrl}"
-                : ticket.ImageUrl;
 
             return new TicketDto
             {
@@ -159,7 +152,7 @@ namespace Tickify.Services
                 CreatedByName = createdByName,
                 AssignedTo = ticket.AssignedTo,
                 AssignedToName = assignedToName,
-                ImageUrl = fullImageUrl
+                ImageUrl = ticket.ImageUrl
             };
         }
 
@@ -180,23 +173,16 @@ namespace Tickify.Services
                 throw new UnauthorizedAccessException("Admin users are not allowed to create tickets.");
 
             string? imageUrl = null;
-            string? fullImageUrl = null;
 
             if (image != null && image.Length > 0)
             {
-                var uploadsPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot/uploads");
-                Directory.CreateDirectory(uploadsPath);
+               
+                imageUrl = await _fileStorageService.UploadFileAsync(
+                image.OpenReadStream(),
+                image.FileName,
+                image.ContentType
+                );
 
-                var fileName = $"{Guid.NewGuid()}_{Path.GetFileName(image.FileName)}";
-                var filePath = Path.Combine(uploadsPath, fileName);
-
-                using var stream = new FileStream(filePath, FileMode.Create);
-                await image.CopyToAsync(stream);
-
-                imageUrl = $"/uploads/{fileName}";
-
-                var publicHost = Environment.GetEnvironmentVariable("PUBLIC_HOST") ?? host;
-                fullImageUrl = $"{scheme}://{publicHost}{imageUrl}";
             }
 
             var ticket = new Ticket
@@ -278,29 +264,21 @@ namespace Tickify.Services
             }
 
             if (image != null && image.Length > 0)
-            {
-                var uploadsPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot/uploads");
-                Directory.CreateDirectory(uploadsPath);
-
-                var fileName = $"{Guid.NewGuid()}_{Path.GetFileName(image.FileName)}";
-                var newPath = Path.Combine(uploadsPath, fileName);
-
-                using var stream = new FileStream(newPath, FileMode.Create);
-                await image.CopyToAsync(stream);
-
-                var publicHost = Environment.GetEnvironmentVariable("PUBLIC_HOST") ?? host;
-
-                if (!string.IsNullOrEmpty(ticket.ImageUrl))
                 {
-                    oldImageUrl = $"{scheme}://{publicHost}{ticket.ImageUrl}";
+                    oldImageUrl = ticket.ImageUrl;
+
+                    var uploadedUrl = await _fileStorageService.UploadFileAsync(
+                        image.OpenReadStream(),
+                        image.FileName,
+                        image.ContentType
+                    );
+
+                    ticket.ImageUrl = uploadedUrl;
+                    newImageUrl = uploadedUrl;
+                    imageChanged = true;
+
+                    changes.Add("🖼️ Image updated.");
                 }
-
-                ticket.ImageUrl = $"/uploads/{fileName}";
-                newImageUrl = $"{scheme}://{publicHost}{ticket.ImageUrl}";
-                imageChanged = true;
-
-                changes.Add("🖼️ Image updated.");
-            }
 
             ticket.UpdatedAt = DateTime.Now;
             _ticketRepository.UpdateTicket(ticket);
@@ -446,12 +424,6 @@ namespace Tickify.Services
 
             try
             {
-                var imagePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", ticket.ImageUrl.TrimStart('/'));
-
-                if (File.Exists(imagePath))
-                {
-                    File.Delete(imagePath);
-                }
 
                 ticket.ImageUrl = null;
                 _ticketRepository.UpdateTicket(ticket);
@@ -510,7 +482,6 @@ namespace Tickify.Services
                 .Where(u => assignedUserIds.Contains(u.Id))
                 .ToDictionaryAsync(u => u.Id, u => u.UserName);
 
-            var publicHost = Environment.GetEnvironmentVariable("PUBLIC_HOST") ?? "localhost:5000";
 
             var ticketDtos = tickets.Select(t => new TicketDto
             {
@@ -527,9 +498,7 @@ namespace Tickify.Services
                 AssignedTo = t.AssignedTo,
                 AssignedToName = t.AssignedTo != null && assignedUserMap.ContainsKey(t.AssignedTo)
                     ? assignedUserMap[t.AssignedTo] : null,
-                ImageUrl = !string.IsNullOrEmpty(t.ImageUrl) ? $"http://{publicHost}{t.ImageUrl}" : null,
-                TotalCommentCount = commentCounts.FirstOrDefault(c => c.TicketId == t.Id)?.Total ?? 0,
-                UnreadCommentCount = unreadCounts.FirstOrDefault(u => u.TicketId == t.Id)?.Unread ?? 0
+                ImageUrl = t.ImageUrl
             });
 
             return ticketDtos;

@@ -19,10 +19,14 @@ variable "vpc_id" {
   type = string
 }
 
-variable "eks_security_group_id" {
+variable "vpc_cidr" {
   type = string
 }
 
-variable "vpc_cidr" {
+variable "owner" {
+  type = string
+}
+
+variable "environment" {
   type = string
 }
