@@ -61,6 +61,10 @@ resource "aws_db_instance" "this" {
   vpc_security_group_ids = [aws_security_group.rds.id]
   db_subnet_group_name   = aws_db_subnet_group.this.name
 
+  lifecycle {
+    ignore_changes = [password]
+  }
+
   tags = {
     Name        = "${var.name}-db"
     Project     = var.name

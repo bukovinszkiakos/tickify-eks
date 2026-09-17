@@ -312,6 +312,7 @@ data "aws_iam_policy_document" "alb_controller" {
     sid    = "ELBRead"
     effect = "Allow"
     actions = [
+      "elasticloadbalancing:DescribeListenerAttributes",
       "elasticloadbalancing:DescribeListenerCertificates",
       "elasticloadbalancing:DescribeListeners",
       "elasticloadbalancing:DescribeLoadBalancers",
