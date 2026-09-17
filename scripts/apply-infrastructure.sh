@@ -30,9 +30,9 @@ if ! command -v aws &>/dev/null; then
   fail "aws CLI is not installed or not in PATH.
         Install it from: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
 fi
-ok "aws CLI found"
+ok "aws CLI found" 
 
-if [[ -z "${TF_VAR_db_password:-}" ]]; then
+if [[ -z "${TF_VAR_db_password:-}" ]]; then 
   printf "\n[ERROR] TF_VAR_db_password is not set.\n\n" >&2
   printf "        Export it in your shell before running this script:\n\n" >&2
   printf "          export TF_VAR_db_password='your-database-password'\n\n" >&2
