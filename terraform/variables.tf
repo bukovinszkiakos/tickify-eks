@@ -19,3 +19,8 @@ variable "name" {
 variable "environment" {
   default = "dev"
 }
+
+variable "github_repository" {
+  description = "GitHub repository in owner/repo format — used to scope the GitHub Actions OIDC trust policy"
+  type        = string
+}

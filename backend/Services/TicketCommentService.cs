@@ -40,7 +40,8 @@ namespace Tickify.Services
                 TicketId = ticketId,
                 Comment = comment,
                 CommentedBy = userId,
-                CreatedAt = DateTime.Now,
+                // AI modernization: use UtcNow — consistent with all other timestamps in this file
+                CreatedAt = DateTime.UtcNow,
                 ImageUrl = imageUrl,
                 CommenterName = username
             };
@@ -55,8 +56,6 @@ namespace Tickify.Services
                 .Select(c => c.CommentedBy)
                 .Distinct()
                 .ToListAsync();
-
-            int.TryParse(userId, out int parsedUserId);
 
             var statusChangers = await _dbContext.TicketHistories
                 .Where(h => h.TicketId == ticketId && h.ChangedBy != userId.Trim())

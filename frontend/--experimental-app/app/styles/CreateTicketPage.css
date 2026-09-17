@@ -1,0 +1,251 @@
+.create-ticket-container {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #e6ecf3, #cfd9e9);
+  font-family: var(--font-sans);
+  padding: 40px 20px;
+  box-sizing: border-box;
+  min-height: calc(100vh - 140px);
+  margin-top: 40px;
+}
+
+.create-ticket-box {
+  background: #ffffff;
+  padding: 32px;
+  border-radius: 18px;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
+  animation: fadeIn 0.5s ease-in-out;
+  color: #2e3a4a;
+}
+
+.create-ticket-box h1 {
+  text-align: center;
+  margin-bottom: 28px;
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1e2a3a;
+}
+
+.create-ticket-box label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: #1e2a3a;
+}
+
+.create-ticket-box input,
+.create-ticket-box textarea,
+.create-ticket-box select {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 16px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  background-color: #fcfcfc;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease;
+}
+
+.create-ticket-box input:focus,
+.create-ticket-box textarea:focus,
+.create-ticket-box select:focus {
+  outline: none;
+  border-color: #007bff;
+}
+
+.create-ticket-box input[type="file"] {
+  padding: 6px 0;
+  border: none;
+  background: none;
+  margin-bottom: 16px;
+}
+
+.create-ticket-box button {
+  width: 100%;
+  background-color: #1e2a3a;
+  color: white;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+.create-ticket-box button:hover {
+  background-color: #253346;
+  transform: translateY(-1px);
+}
+
+.button-group {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.preview-btn {
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  padding: 12px;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  width: 100%;
+  transition: background-color 0.3s ease;
+}
+
+.preview-btn:hover {
+  background-color: #5a6268;
+}
+
+.file-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.clear-file-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 12px;
+  font-weight: bold;
+  color: #dc3545;
+  background-color: transparent;
+  border: 1px solid #dc3545;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.clear-file-btn:hover {
+  background-color: #dc3545;
+  color: white;
+}
+
+.preview-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.preview-content {
+  background: #fff;
+  padding: 30px 25px;
+  border-radius: 14px;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.preview-content h2 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  text-align: center;
+  font-size: 1.6rem;
+  color: #1e2a3a;
+}
+
+.preview-content p {
+  margin-bottom: 12px;
+  font-size: 0.95rem;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+
+.preview-image {
+  margin-top: 15px;
+  text-align: center;
+}
+
+.preview-image img {
+  max-width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.close-btn {
+  margin-top: 20px;
+  width: 100%;
+  padding: 12px;
+  background-color: #1e2a3a;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.close-btn:hover {
+  background-color: #253346;
+}
+
+.error-message {
+  margin-bottom: 15px;
+}
+
+@media (max-width: 600px) {
+  .create-ticket-box {
+    padding: 24px 18px;
+    max-width: 100%;
+  }
+
+  .create-ticket-box h1 {
+    font-size: 1.6rem;
+  }
+
+  .create-ticket-box input,
+  .create-ticket-box textarea,
+  .create-ticket-box select {
+    font-size: 0.9rem;
+  }
+
+  .create-ticket-box button {
+    font-size: 0.9rem;
+    padding: 10px;
+  }
+
+  .button-group {
+    flex-direction: column;
+  }
+}
+
+.scrollable-text {
+  max-height: 50px; 
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 8px;
+  background: #f9f9f9;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  margin-top: 6px;
+  font-size: 0.9rem;
+}
+
+

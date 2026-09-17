@@ -22,6 +22,11 @@ spec:
           ports:
             - containerPort: 8080
 
+          # AI modernization: enforce non-root at the Kubernetes level, consistent with USER app in Dockerfile
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+
           resources:
             requests:
               cpu: "500m"
@@ -29,6 +34,24 @@ spec:
             limits:
               cpu: "1500m"
               memory: "1Gi"
+
+          # AI modernization: readiness probe uses /health (real DB check) — prevents traffic during startup/migrations
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+
+          # AI modernization: liveness probe restarts stuck pods — generous delay accounts for slow cold starts
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 3
 
           env:
             - name: ConnectionStrings__DefaultConnection
@@ -54,3 +77,26 @@ spec:
                 secretKeyRef:
                   name: tickify-secret
                   key: Jwt__ValidAudience
+
+            # AI modernization: required by RoleSeeder — throws InvalidOperationException at startup if missing
+            - name: SEEDING__ADMINPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tickify-secret
+                  key: SEEDING__ADMINPASSWORD
+
+            - name: SEEDING__SUPERADMINPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tickify-secret
+                  key: SEEDING__SUPERADMINPASSWORD
+
+            # AI modernization: required by S3FileStorageService — throws InvalidOperationException at startup if missing
+            - name: AWS__BucketName
+              valueFrom:
+                secretKeyRef:
+                  name: tickify-secret
+                  key: AWS__BucketName
+
+            - name: COOKIE__SECURE
+              value: "false"

@@ -27,9 +27,9 @@ module "network" {
 module "eks" {
   source = "./modules/eks"
 
-  name       = "akos-tickify"
-  subnet_ids = module.network.subnet_ids
-  vpc_id     = module.network.vpc_id
+  name            = "akos-tickify"
+  subnet_ids      = module.network.subnet_ids
+  node_subnet_ids = module.network.private_subnet_ids
 
   s3_bucket_arn = module.s3.bucket_arn
 }
@@ -56,6 +56,4 @@ module "s3" {
   project_name = var.name
   environment  = var.environment
   owner        = "akos"
-
-  app_role_name = module.eks.app_pod_role_name
 }

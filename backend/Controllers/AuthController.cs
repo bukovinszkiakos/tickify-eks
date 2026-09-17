@@ -1,6 +1,7 @@
 ﻿using Azure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using System.Security.Claims;
 using Tickify.Contracts;
 using Tickify.Services.Authentication;
@@ -12,10 +13,12 @@ namespace Tickify.Controllers
     public class AuthController : ControllerBase
     {
         private readonly IAuthService _authService;
+        private readonly IConfiguration _configuration;
 
-        public AuthController(IAuthService authService)
+        public AuthController(IAuthService authService, IConfiguration configuration)
         {
             _authService = authService;
+            _configuration = configuration;
         }
 
         [HttpPost("Register")]
@@ -58,7 +61,7 @@ namespace Tickify.Controllers
             Response.Cookies.Append("token", result.Token, new CookieOptions
             {
                 HttpOnly = true,
-                Secure = true,
+                Secure = _configuration.GetValue<bool>("Cookie:Secure", true),
                 SameSite = SameSiteMode.Lax,
                 Expires = DateTime.UtcNow.AddMinutes(30)
             });

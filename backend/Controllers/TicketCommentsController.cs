@@ -6,7 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Tickify.DTOs;
 using Tickify.Services;
-using System.IO;
+using Tickify.Services.FileStorage;
 using Microsoft.EntityFrameworkCore;
 using Tickify.Context;
 
@@ -20,15 +20,19 @@ namespace Tickify.Controllers
         private readonly ITicketCommentService _ticketCommentService;
         private readonly UserManager<IdentityUser> _userManager;
         private readonly ApplicationDbContext _dbContext;
+        // AI modernization: IFileStorageService injected so comment images go to S3, not the container's local filesystem
+        private readonly IFileStorageService _fileStorageService;
 
         public TicketCommentsController(
-     ITicketCommentService ticketCommentService,
-     UserManager<IdentityUser> userManager,
-     ApplicationDbContext dbContext) 
+            ITicketCommentService ticketCommentService,
+            UserManager<IdentityUser> userManager,
+            ApplicationDbContext dbContext,
+            IFileStorageService fileStorageService)
         {
             _ticketCommentService = ticketCommentService;
             _userManager = userManager;
-            _dbContext = dbContext; 
+            _dbContext = dbContext;
+            _fileStorageService = fileStorageService;
         }
 
         [HttpGet]
@@ -56,13 +60,14 @@ namespace Tickify.Controllers
                 await _dbContext.SaveChangesAsync();
             }
 
-            var result = comments.Select(c => new {
+            var result = await Task.WhenAll(comments.Select(async c => new
+            {
                 c.Id,
                 c.Comment,
                 c.CreatedAt,
-                c.ImageUrl,
+                ImageUrl = await _fileStorageService.GetFileUrlAsync(c.ImageUrl ?? ""),
                 Commenter = !string.IsNullOrWhiteSpace(c.CommenterName) ? c.CommenterName : "Unknown"
-            });
+            }));
 
             return Ok(result);
         }
@@ -82,19 +87,11 @@ namespace Tickify.Controllers
 
             if (image != null && image.Length > 0)
             {
-                var uploadsPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot/uploads");
-                Directory.CreateDirectory(uploadsPath);
-
-                var fileName = $"{Guid.NewGuid()}_{image.FileName}";
-                var filePath = Path.Combine(uploadsPath, fileName);
-
-                using (var stream = new FileStream(filePath, FileMode.Create))
-                {
-                    await image.CopyToAsync(stream);
-                }
-
-                var publicHost = Environment.GetEnvironmentVariable("PUBLIC_HOST") ?? Request.Host.Value;
-                imageUrl = $"{Request.Scheme}://{publicHost}/uploads/{fileName}";
+                // AI modernization: upload to S3 via IFileStorageService — local disk writes are ephemeral in containers
+                imageUrl = await _fileStorageService.UploadFileAsync(
+                    image.OpenReadStream(),
+                    image.FileName,
+                    image.ContentType);
             }
 
 
@@ -102,7 +99,7 @@ namespace Tickify.Controllers
             {
                 var username = User.FindFirst(ClaimTypes.Name)?.Value ?? "Unknown";
                 await _ticketCommentService.AddCommentAsync(ticketId, comment, userId, username, imageUrl);
-                return Ok(new { message = "Comment added successfully", imageUrl });
+                return Ok(new { message = "Comment added successfully", imageUrl = await _fileStorageService.GetFileUrlAsync(imageUrl ?? "") });
             }
             catch (KeyNotFoundException ex)
             {

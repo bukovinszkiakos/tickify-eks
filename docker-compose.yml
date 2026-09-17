@@ -26,6 +26,11 @@ services:
       - Jwt__ValidIssuer=Tickify
       - Jwt__ValidAudience=TickifyUsers
 
+      # AI modernization: required by RoleSeeder and S3FileStorageService — app throws InvalidOperationException at startup if missing
+      - SEEDING__ADMINPASSWORD=${ADMIN_PASSWORD}
+      - SEEDING__SUPERADMINPASSWORD=${SUPER_ADMIN_PASSWORD}
+      - AWS__BucketName=${AWS_BUCKET_NAME}
+
       - ASPNETCORE_URLS=http://+:8080
     ports:
       - "5000:8080"

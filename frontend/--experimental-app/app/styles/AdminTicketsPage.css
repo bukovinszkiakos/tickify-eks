@@ -1,0 +1,225 @@
+.admin-tickets-container {
+    padding: 40px 20px;
+    background: var(--color-bg-page);
+    font-family: var(--font-sans);
+    min-height: calc(100vh - 140px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 30px;
+  }
+  
+  .admin-tickets-container h1 {
+    color: #1e2a3a;
+    font-size: 2rem;
+    text-align: center;
+    margin-bottom: 10px;
+  }
+  
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    justify-content: center;
+    background-color: white;
+    padding: 20px 25px;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    width: 100%;
+    max-width: 700px;
+  }
+  
+  .filters label {
+    display: flex;
+    flex-direction: column;
+    font-weight: 600;
+    color: #333;
+    font-size: 0.95rem;
+  }
+  
+  .filters select {
+    margin-top: 6px;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background-color: #f9f9f9;
+    font-size: 0.95rem;
+  }
+  
+  .ticket-list {
+    list-style: none;
+    padding: 0;
+    width: 100%;
+    max-width: 700px;
+  
+    max-height: 500px; 
+    overflow-y: auto;
+    padding-right: 6px; 
+  }
+  
+  .ticket-list::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .ticket-list::-webkit-scrollbar-thumb {
+    background-color: #999;
+    border-radius: 3px;
+  }
+  
+  .ticket-list::-webkit-scrollbar-thumb:hover {
+    background-color: #555;
+  }
+  
+  
+  .ticket-item {
+    background: white;
+    border-left: 6px solid #007bff;
+    padding: 20px;
+    margin-bottom: 15px;
+    border-radius: 10px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .ticket-item a {
+    text-decoration: none;
+    color: #1e2a3a;
+    font-weight: 600;
+    font-size: 1.1rem;
+    white-space: nowrap;             
+    overflow: hidden;                
+    text-overflow: ellipsis;         
+    display: inline-block;
+    max-width: 100%;                 
+    cursor: pointer;
+  }
+  
+  
+  .ticket-item a:hover {
+    text-decoration: underline;
+  }
+  
+  .status-info {
+    font-size: 0.95rem;
+    color: #555;
+  }
+  
+  .status-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  
+  .status-buttons button {
+    padding: 8px 12px;
+    font-weight: bold;
+    font-size: 0.85rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  
+  .status-open {
+    background-color: #28a745;
+    color: white;
+  }
+  
+  .status-inprogress {
+    background-color: #ffc107;
+    color: #212529;
+  }
+  
+  .status-resolved {
+    background-color: #17a2b8;
+    color: white;
+  }
+  
+  .status-closed {
+    background-color: #dc3545;
+    color: white;
+  }
+  
+  .status-buttons button:hover {
+    opacity: 0.85;
+  }
+
+  .comment-stats {
+    font-size: 0.9rem;
+    color: #333;
+  }
+  
+  .unread-badge {
+    color: red;
+    font-weight: bold;
+    margin-left: 6px;
+  }
+
+  .assigned-badge {
+    background-color: #007bff;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  
+  .unassigned-badge {
+    background-color: #6c757d;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  
+  .assign-button {
+    background-color: #28a745;
+    color: white;
+    border: none;
+    padding: 5px 8px;
+    border-radius: 4px;
+    margin-top: 4px;
+    cursor: pointer;
+  }
+  .assign-button:hover {
+    background-color: #218838;
+  }
+  
+  .mine-filter {
+    margin-top: 10px;
+    font-weight: 500;
+  }
+  .mine-filter input {
+    margin-right: 6px;
+  }
+
+  .ticket-title-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  
+  .status-badge {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    color: white;
+    line-height: 1;
+    display: inline-block;
+    transform: translateY(2px); 
+  }
+  
+  .status-badge.resolved {
+    background-color: #28a745;
+  }
+  
+  .status-badge.closed {
+    background-color: #dc3545;
+  }
+  
+  
+  

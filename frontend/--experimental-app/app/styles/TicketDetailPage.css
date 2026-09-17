@@ -1,0 +1,270 @@
+.ticket-page-container {
+  padding: 40px 20px;
+  background: linear-gradient(135deg, #f2f6fc, #dbe4f3);
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  min-height: calc(100vh - 140px);
+  margin-top: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 40px;
+}
+
+.ticket-detail-card {
+  background: #ffffff;
+  padding: 42px 36px;
+  border-radius: 20px;
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.08);
+  width: 100%;
+  max-width: 650px;
+  word-break: break-word;
+  transition: box-shadow 0.3s ease;
+}
+
+.ticket-detail-card:hover {
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.12);
+}
+
+.ticket-detail-card h1,
+.ticket-comments-section h2 {
+  text-align: center;
+  color: #1a2737;
+  margin-bottom: 28px;
+  font-size: 2rem;
+}
+
+.ticket-info {
+  margin-top: 20px;
+}
+
+.info-block {
+  margin-bottom: 20px;
+}
+
+.info-block strong {
+  display: inline-block;
+  min-width: 110px;
+  font-weight: 600;
+  color: #1e2a3a;
+}
+
+.scrollable-text {
+  max-height: 150px;
+  overflow-y: auto;
+  background-color: #f8fbff;
+  border: 1px solid #d4dbe3;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 1rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.field-input {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 1rem;
+  border-radius: 8px;
+  border: 1px solid #ccd6e0;
+  background-color: #ffffff;
+  transition: border-color 0.2s ease;
+}
+
+.field-input:focus {
+  outline: none;
+  border-color: #5b9eff;
+  box-shadow: 0 0 0 2px rgba(91, 158, 255, 0.2);
+}
+
+.ticket-comments-section {
+  background: #ffffff;
+  padding: 42px;
+  border-radius: 20px;
+  width: 100%;
+  max-width: 1200px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.08);
+}
+
+.comment-scroll {
+  max-height: 350px;
+  overflow-y: auto;
+  margin-bottom: 24px;
+}
+
+.comment-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.comment-item {
+  background-color: #f9fbfd;
+  border-left: 4px solid #1e2a3a;
+  padding: 16px 20px;
+  border-radius: 10px;
+  margin-bottom: 18px;
+}
+
+.comment-item p {
+  margin: 8px 0;
+  font-size: 0.95rem;
+  color: #333;
+  white-space: pre-wrap;
+}
+
+.comment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.comment-form textarea {
+  resize: vertical;
+  min-height: 100px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #ccd6e0;
+  background-color: #ffffff;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 28px;
+  flex-wrap: wrap;
+}
+
+button,
+.comment-form button,
+.screenshot-section button,
+.see-changes-btn,
+.close-btn,
+.image-button {
+  padding: 12px 18px;
+  font-weight: bold;
+  font-size: 0.95rem;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s ease-in-out, transform 0.15s ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+}
+
+.edit-btn {
+  background-color: #1e2a3a;
+  color: white;
+}
+.edit-btn:hover {
+  background-color: #2c3a4d;
+}
+
+.delete-btn {
+  background-color: #e63946;
+  color: white;
+}
+.delete-btn:hover {
+  background-color: #c32f3f;
+}
+
+.save-btn {
+  background-color: #2a9d8f;
+  color: white;
+}
+.save-btn:hover {
+  background-color: #21867c;
+}
+
+.preview-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+}
+
+.preview-content {
+  background-color: #ffffff;
+  padding: 30px;
+  border-radius: 16px;
+  max-width: 620px;
+  width: 90%;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+  color: #1e2a3a;
+  text-align: left;
+}
+
+.preview-content h3 {
+  font-size: 1.5rem;
+  margin-bottom: 20px;
+}
+
+.preview-content pre {
+  background-color: #f6f8fa;
+  padding: 15px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  border: 1px solid #d1d5da;
+  white-space: pre-wrap;
+  overflow-y: auto;
+  max-height: 300px;
+}
+
+.image-button {
+  background-color: #6c757d;
+  color: white;
+  margin-right: 10px;
+}
+.image-button:hover {
+  background-color: #5a6268;
+}
+
+.close-btn {
+  background-color: #007bff;
+  color: white;
+  margin-top: 20px;
+}
+.close-btn:hover {
+  background-color: #0056b3;
+}
+
+.preview-full {
+  max-width: 90vw;
+  max-height: 90vh;
+  border-radius: 10px;
+  box-shadow: 0 0 24px rgba(255, 255, 255, 0.1);
+}
+
+.preview-modal.image-overlay {
+  z-index: 10001;
+}
+
+.change-preview {
+  font-style: italic;
+  color: #1e2a3a;
+  margin-bottom: 10px;
+}
+
+.handling-indicator {
+  background-color: #fff3cd;
+  border-left: 6px solid #ffeeba;
+  padding: 16px;
+  border-radius: 10px;
+  font-size: 1rem;
+  margin-bottom: 20px;
+}
+
+.error-message,
+.loading-message {
+  color: #e63946;
+  font-weight: bold;
+  text-align: center;
+  margin-top: 40px;
+}

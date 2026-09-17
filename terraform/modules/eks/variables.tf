@@ -6,10 +6,6 @@ variable "subnet_ids" {
   type = list(string)
 }
 
-variable "vpc_id" {
-  type = string
-}
-
 variable "desired_size" {
   type    = number
   default = 2
@@ -28,4 +24,9 @@ variable "min_size" {
 variable "s3_bucket_arn" {
   description = "S3 bucket ARN for uploads"
   type        = string
+}
+
+variable "node_subnet_ids" {
+  description = "Private subnet IDs for EKS worker nodes"
+  type        = list(string)
 }

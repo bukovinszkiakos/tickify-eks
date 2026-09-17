@@ -11,7 +11,10 @@ namespace Tickify.Services.FileStorage
         public S3FileStorageService(IAmazonS3 s3Client, IConfiguration config)
         {
             _s3Client = s3Client;
-            _bucketName = config["AWS:BucketName"];
+            // AI modernization: fail clearly at startup if bucket name is missing, not silently at first upload
+            _bucketName = config["AWS:BucketName"]
+                ?? throw new InvalidOperationException(
+                    "AWS:BucketName is not configured. Set the AWS__BucketName environment variable.");
         }
 
         public async Task<string> UploadFileAsync(Stream fileStream, string fileName, string contentType)
@@ -28,7 +31,23 @@ namespace Tickify.Services.FileStorage
 
             await _s3Client.PutObjectAsync(request);
 
-            return $"https://{_bucketName}.s3.amazonaws.com/{key}";
+            return key;
+        }
+
+        public Task<string?> GetFileUrlAsync(string key, int expiryMinutes = 60)
+        {
+            if (string.IsNullOrEmpty(key))
+                return Task.FromResult<string?>(null);
+
+            var request = new GetPreSignedUrlRequest
+            {
+                BucketName = _bucketName,
+                Key = key,
+                Expires = DateTime.UtcNow.AddMinutes(expiryMinutes),
+                Verb = HttpVerb.GET
+            };
+
+            return Task.FromResult<string?>(_s3Client.GetPreSignedURL(request));
         }
     }
 }

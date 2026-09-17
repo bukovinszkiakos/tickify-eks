@@ -87,7 +87,7 @@ namespace Tickify.Services
                 .ToDictionaryAsync(u => u.Id, u => u.UserName);
 
 
-            var ticketDtos = tickets.Select(t => new TicketDto
+            var ticketDtoList = tickets.Select(t => new TicketDto
             {
                 Id = t.Id,
                 Title = t.Title,
@@ -102,15 +102,21 @@ namespace Tickify.Services
                 AssignedTo = t.AssignedTo,
                 AssignedToName = t.AssignedTo != null && userMap.ContainsKey(t.AssignedTo)
                     ? userMap[t.AssignedTo] : null,
-                ImageUrl = t.ImageUrl
-            });
+                ImageUrl = t.ImageUrl,
+                // AI modernization: map already-fetched comment counts — were computed above but never assigned (always returned 0)
+                TotalCommentCount = commentCounts.FirstOrDefault(c => c.TicketId == t.Id)?.Total ?? 0,
+                UnreadCommentCount = unreadCounts.FirstOrDefault(u => u.TicketId == t.Id)?.Unread ?? 0
+            }).ToList();
 
             if (!isAdmin && !string.IsNullOrEmpty(userId))
             {
-                ticketDtos = ticketDtos.Where(t => t.CreatedBy == userId);
+                ticketDtoList = ticketDtoList.Where(t => t.CreatedBy == userId).ToList();
             }
 
-            return ticketDtos;
+            foreach (var dto in ticketDtoList)
+                dto.ImageUrl = await _fileStorageService.GetFileUrlAsync(dto.ImageUrl ?? "");
+
+            return ticketDtoList;
         }
 
 
@@ -152,7 +158,7 @@ namespace Tickify.Services
                 CreatedByName = createdByName,
                 AssignedTo = ticket.AssignedTo,
                 AssignedToName = assignedToName,
-                ImageUrl = ticket.ImageUrl
+                ImageUrl = await _fileStorageService.GetFileUrlAsync(ticket.ImageUrl ?? "")
             };
         }
 
@@ -192,8 +198,9 @@ namespace Tickify.Services
                 Priority = priority,
                 Status = "Open",
                 CreatedBy = userId,
-                CreatedAt = DateTime.Now,
-                UpdatedAt = DateTime.Now,
+                // AI modernization: use UtcNow — DateTime.Now was inconsistent with the rest of the file and wrong in containers
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
                 ImageUrl = imageUrl
             };
 
@@ -213,7 +220,7 @@ namespace Tickify.Services
                 Priority = ticket.Priority,
                 CreatedBy = ticket.CreatedBy,
                 AssignedTo = ticket.AssignedTo,
-                ImageUrl = imageUrl
+                ImageUrl = await _fileStorageService.GetFileUrlAsync(imageUrl ?? "")
             };
         }
 
@@ -280,7 +287,7 @@ namespace Tickify.Services
                     changes.Add("🖼️ Image updated.");
                 }
 
-            ticket.UpdatedAt = DateTime.Now;
+            ticket.UpdatedAt = DateTime.UtcNow;
             _ticketRepository.UpdateTicket(ticket);
 
             if (changes.Any())
@@ -289,8 +296,14 @@ namespace Tickify.Services
                 if (imageChanged && !string.IsNullOrEmpty(newImageUrl))
                 {
                     if (!string.IsNullOrEmpty(oldImageUrl))
-                        commentText += $"\nOld image: {oldImageUrl}";
-                    commentText += $"\nNew image: {newImageUrl}";
+                    {
+                        var oldPresignedUrl = await _fileStorageService.GetFileUrlAsync(oldImageUrl);
+                        if (!string.IsNullOrEmpty(oldPresignedUrl))
+                            commentText += $"\nOld image: {oldPresignedUrl}";
+                    }
+                    var newPresignedUrl = await _fileStorageService.GetFileUrlAsync(newImageUrl);
+                    if (!string.IsNullOrEmpty(newPresignedUrl))
+                        commentText += $"\nNew image: {newPresignedUrl}";
                 }
 
                 var user = await _userManager.FindByIdAsync(userId);
@@ -324,7 +337,7 @@ namespace Tickify.Services
             if (oldStatus == newStatus) return;
 
             ticket.Status = newStatus;
-            ticket.UpdatedAt = DateTime.Now;
+            ticket.UpdatedAt = DateTime.UtcNow;
             _ticketRepository.UpdateTicket(ticket);
 
             var commentText = $"🔁 Status changed by admin ({adminName}): {oldStatus} → {newStatus}";
@@ -483,7 +496,7 @@ namespace Tickify.Services
                 .ToDictionaryAsync(u => u.Id, u => u.UserName);
 
 
-            var ticketDtos = tickets.Select(t => new TicketDto
+            var ticketDtoList = tickets.Select(t => new TicketDto
             {
                 Id = t.Id,
                 Title = t.Title,
@@ -498,10 +511,16 @@ namespace Tickify.Services
                 AssignedTo = t.AssignedTo,
                 AssignedToName = t.AssignedTo != null && assignedUserMap.ContainsKey(t.AssignedTo)
                     ? assignedUserMap[t.AssignedTo] : null,
-                ImageUrl = t.ImageUrl
-            });
+                ImageUrl = t.ImageUrl,
+                // AI modernization: map already-fetched comment counts — were computed above but never assigned (always returned 0)
+                TotalCommentCount = commentCounts.FirstOrDefault(c => c.TicketId == t.Id)?.Total ?? 0,
+                UnreadCommentCount = unreadCounts.FirstOrDefault(u => u.TicketId == t.Id)?.Unread ?? 0
+            }).ToList();
 
-            return ticketDtos;
+            foreach (var dto in ticketDtoList)
+                dto.ImageUrl = await _fileStorageService.GetFileUrlAsync(dto.ImageUrl ?? "");
+
+            return ticketDtoList;
         }
 
 

@@ -1,0 +1,170 @@
+name: Deploy to EKS
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-central-1
+  ECR_REGISTRY: 554422868760.dkr.ecr.eu-central-1.amazonaws.com
+  ECR_BACKEND_REPOSITORY: akos-tickify-backend
+  ECR_FRONTEND_REPOSITORY: akos-tickify-frontend
+  EKS_CLUSTER: akos-tickify-eks
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore dependencies
+        run: dotnet restore backend/Tickify.csproj
+
+      - name: Build
+        run: dotnet build backend/Tickify.csproj --no-restore
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        working-directory: frontend/--experimental-app
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend/--experimental-app
+        run: npm run build
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: ci
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.GH_ACTIONS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build backend Docker image
+        run: |
+          IMAGE_TAG="${GITHUB_SHA::7}"
+          IMAGE_URL="${ECR_REGISTRY}/${ECR_BACKEND_REPOSITORY}:${IMAGE_TAG}"
+          docker build -t "$IMAGE_URL" backend/
+          echo "IMAGE_URL=${IMAGE_URL}" >> "$GITHUB_ENV"
+
+      - name: Build frontend Docker image
+        run: |
+          IMAGE_TAG="${GITHUB_SHA::7}"
+          FRONTEND_IMAGE_URL="${ECR_REGISTRY}/${ECR_FRONTEND_REPOSITORY}:${IMAGE_TAG}"
+          docker build -t "$FRONTEND_IMAGE_URL" frontend/--experimental-app/
+          echo "FRONTEND_IMAGE_URL=${FRONTEND_IMAGE_URL}" >> "$GITHUB_ENV"
+
+      - name: Scan backend image for vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE_URL }}
+          format: table
+          exit-code: "0"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+
+      - name: Scan frontend image for vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.FRONTEND_IMAGE_URL }}
+          format: table
+          exit-code: "0"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+
+      - name: Push backend Docker image to ECR
+        run: docker push "$IMAGE_URL"
+
+      - name: Push frontend Docker image to ECR
+        run: docker push "$FRONTEND_IMAGE_URL"
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name "$EKS_CLUSTER" --region "$AWS_REGION"
+
+      - name: Apply ServiceAccount
+        env:
+          APP_POD_ROLE_ARN: ${{ secrets.APP_POD_ROLE_ARN }}
+        run: |
+          sed "s|\${APP_POD_ROLE_ARN}|${APP_POD_ROLE_ARN}|g" k8s/serviceaccount.yaml | kubectl apply -f -
+
+      - name: Create or update application Secret
+        env:
+          DB_CONNECTION_STRING: ${{ secrets.DB_CONNECTION_STRING }}
+          JWT_SIGNING_KEY: ${{ secrets.JWT_SIGNING_KEY }}
+          SEEDING_ADMIN_PASSWORD: ${{ secrets.SEEDING_ADMIN_PASSWORD }}
+          SEEDING_SUPERADMIN_PASSWORD: ${{ secrets.SEEDING_SUPERADMIN_PASSWORD }}
+          AWS_BUCKET_NAME: ${{ secrets.AWS_BUCKET_NAME }}
+        run: |
+          kubectl create secret generic tickify-secret \
+            --from-literal=ConnectionStrings__DefaultConnection="${DB_CONNECTION_STRING}" \
+            --from-literal=Jwt__IssuerSigningKey="${JWT_SIGNING_KEY}" \
+            --from-literal=Jwt__ValidIssuer="Tickify" \
+            --from-literal=Jwt__ValidAudience="TickifyUsers" \
+            --from-literal=SEEDING__ADMINPASSWORD="${SEEDING_ADMIN_PASSWORD}" \
+            --from-literal=SEEDING__SUPERADMINPASSWORD="${SEEDING_SUPERADMIN_PASSWORD}" \
+            --from-literal=AWS__BucketName="${AWS_BUCKET_NAME}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply stable Kubernetes resources
+        run: |
+          kubectl apply -f k8s/service.yaml
+          kubectl apply -f k8s/frontend-service.yaml
+          kubectl apply -f k8s/ingress.yaml
+          kubectl apply -f k8s/hpa.yaml
+
+      - name: Deploy backend
+        run: |
+          sed "s|IMAGE_PLACEHOLDER|${IMAGE_URL}|g" k8s/deployment.yaml | kubectl apply -f -
+
+      - name: Wait for backend rollout
+        id: rollout-backend
+        run: |
+          kubectl rollout status deployment/tickify-backend --timeout=120s
+
+      - name: Deploy frontend
+        run: |
+          sed "s|IMAGE_PLACEHOLDER|${FRONTEND_IMAGE_URL}|g" k8s/frontend-deployment.yaml | kubectl apply -f -
+
+      - name: Wait for frontend rollout
+        id: rollout-frontend
+        run: |
+          kubectl rollout status deployment/tickify-frontend --timeout=120s
+
+      - name: Rollback backend on failure
+        if: failure() && steps.rollout-backend.outcome == 'failure'
+        run: |
+          kubectl rollout undo deployment/tickify-backend
+          kubectl rollout status deployment/tickify-backend --timeout=120s
+
+      - name: Rollback frontend on failure
+        if: failure() && steps.rollout-frontend.outcome == 'failure'
+        run: |
+          kubectl rollout undo deployment/tickify-frontend
+          kubectl rollout status deployment/tickify-frontend --timeout=120s

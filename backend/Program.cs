@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -28,6 +28,19 @@ builder.Services.AddScoped<IFileStorageService, S3FileStorageService>();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddHttpContextAccessor();
+
+// AI modernization: real DB connectivity health check (previously returned static "healthy" string regardless of DB state)
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<ApplicationDbContext>("database");
+
+// AI modernization: named CORS policy, permissive for now — restrict to frontend origin once frontend is added
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader());
+});
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -76,6 +89,16 @@ builder.Services.AddSwaggerGen(option =>
 
 var app = builder.Build();
 
+// AI modernization: global exception handler must be first in the pipeline so it catches all unhandled exceptions
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        context.Response.StatusCode = 500;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new { error = "An unexpected error occurred." });
+    });
+});
 
 if (app.Environment.IsDevelopment())
 {
@@ -83,10 +106,16 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// AI modernization: CORS must be placed before Authentication and Authorization
+app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// AI modernization: MapHealthChecks replaces the static string endpoint — returns 503 if DB is unreachable
+app.MapHealthChecks("/health");
+app.MapGet("/", () => "Tickify API running");
 
 using (var scope = app.Services.CreateScope())
 {
@@ -97,9 +126,6 @@ using (var scope = app.Services.CreateScope())
 
     await roleSeeder.SeedRolesAndAdminAsync();
 }
-
-app.MapGet("/", () => "Tickify API running");
-app.MapGet("/health", () => "healthy");
 
 app.Run();
 

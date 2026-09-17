@@ -68,10 +68,13 @@ namespace Tickify.Controllers
         }
 
 
+        [Authorize]
         [HttpDelete("notifications/{id}")]
         public async Task<IActionResult> DeleteNotification(int id)
         {
-            var notification = await _dbContext.Notifications.FindAsync(id);
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var notification = await _dbContext.Notifications
+                .FirstOrDefaultAsync(n => n.Id == id && n.UserId == userId);
             if (notification == null) return NotFound();
 
             _dbContext.Notifications.Remove(notification);

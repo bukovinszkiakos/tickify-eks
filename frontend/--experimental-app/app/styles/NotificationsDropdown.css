@@ -1,0 +1,59 @@
+.notification-wrapper {
+    position: relative;
+  }
+  
+  .notification-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    position: relative;
+  }
+  
+  .dot {
+    position: absolute;
+    top: 0;
+    right: 0;
+    background-color: red;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  
+  .notification-dropdown {
+    position: absolute;
+    top: 40px;
+    right: 0;
+    width: 260px;
+    background: white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    padding: 10px;
+    border-radius: 6px;
+    z-index: 99;
+  }
+  
+  .notification-dropdown h4 {
+    margin-bottom: 10px;
+  }
+  
+  .notification-item {
+    padding: 8px;
+    margin-bottom: 4px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  
+  .notification-item.unread {
+    background-color: #e6f3ff;
+    font-weight: bold;
+  }
+  
+  .notification-item.read {
+    background-color: #f7f7f7;
+    color: #777;
+  }
+  
+  .empty-text {
+    color: #999;
+    font-style: italic;
+  }
+  

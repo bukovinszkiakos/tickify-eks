@@ -3,10 +3,11 @@ resource "aws_security_group" "rds" {
   vpc_id = var.vpc_id
 
   ingress {
-    from_port   = 1433
-    to_port     = 1433
-    protocol    = "tcp"
-    security_groups = [aws_security_group.db_access.id]
+    from_port = 1433
+    to_port   = 1433
+    protocol  = "tcp"
+    # AI modernization: allow any resource within the VPC — RDS has no public endpoint so VPC boundary is the security perimeter
+    cidr_blocks = [var.vpc_cidr]
   }
 
   egress {
@@ -26,7 +27,7 @@ resource "aws_security_group" "rds" {
 
 resource "aws_db_subnet_group" "this" {
   name       = "${var.name}-db-subnet-group"
-  subnet_ids = var.subnet_ids   
+  subnet_ids = var.subnet_ids
 
   tags = {
     Name        = "${var.name}-db-subnet-group"
@@ -42,7 +43,8 @@ resource "aws_db_instance" "this" {
   engine         = "sqlserver-ex"
   instance_class = "db.t3.micro"
 
-  multi_az =  true
+  # AI modernization: single-AZ for dev/CV — multi_az doubles cost (~$67/month extra) with no benefit for a non-production workload
+  multi_az = false
 
   username = var.db_username
   password = var.db_password
@@ -50,6 +52,7 @@ resource "aws_db_instance" "this" {
   license_model = "license-included"
 
   allocated_storage       = 20
+  storage_encrypted       = true
   backup_retention_period = 7
   skip_final_snapshot     = true
 
@@ -60,26 +63,6 @@ resource "aws_db_instance" "this" {
 
   tags = {
     Name        = "${var.name}-db"
-    Project     = var.name
-    Owner       = var.owner
-    Environment = var.environment
-  }
-}
-
-
-resource "aws_security_group" "db_access" {
-  name   = "${var.name}-db-access-sg"
-  vpc_id = var.vpc_id
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name        = "${var.name}-db-access"
     Project     = var.name
     Owner       = var.owner
     Environment = var.environment

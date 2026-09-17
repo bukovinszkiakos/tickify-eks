@@ -1,0 +1,120 @@
+.admin-users-container {
+    padding: 1rem;
+    max-width: 1000px;
+    width: 90%;
+    margin: auto;
+    background: white;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.1);
+    font-family: var(--font-sans);
+    margin-top: 100px;
+    margin-bottom: 30px;
+  }
+  
+  .admin-users-container h1,
+  .admin-users-container h2 {
+    text-align: center;
+    color: var(--color-brand);
+  }
+  
+  .admin-users-container ul {
+    list-style: none;
+    padding: 0;
+  }
+  
+  .admin-users-container li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f5f5f5;
+    padding: 12px;
+    margin: 6px 0;
+    border-radius: 5px;
+  }
+  
+  .admin-users-container button {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  
+  .admin-users-container button:hover {
+    background-color: #c82333;
+  }
+  
+  .assign-role-form {
+    margin-top: 20px;
+    text-align: center;
+  }
+  
+  .assign-role-form select {
+    width: 100%;
+    padding: 8px;
+    margin: 6px 0;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+  }
+  
+  .assign-role-form button {
+    width: 100%;
+    background-color: #007bff;
+    color: white;
+    padding: 10px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  
+  .assign-role-form button:hover {
+    background-color: #0056b3;
+  }
+  
+  .user-list-wrapper {
+    max-height: 400px;
+    overflow-y: auto;
+    margin-top: 20px;
+    padding-right: 5px;
+  }
+  
+  .role-badge {
+    margin-left: 10px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    text-transform: uppercase;
+  }
+  
+  .role-badge.Admin {
+    background-color: #ffc107;
+    color: #212529;
+  }
+  
+  .role-badge.SuperAdmin {
+    background-color: #6f42c1;
+    color: white;
+  }
+  
+  .role-badge.User {
+    background-color: #17a2b8;
+    color: white;
+  }
+
+  .error-message {
+  color: red;
+  background: #ffe0e0;
+  padding: 10px 16px;
+  border-radius: 8px;
+  margin: 12px 0;
+  font-weight: 500;
+  border: 1px solid #ffbdbd;
+}
+
+  
+  
+  

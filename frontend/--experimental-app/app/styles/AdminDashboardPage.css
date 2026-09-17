@@ -1,0 +1,102 @@
+.admin-dashboard-page {
+    padding: 40px 20px;
+    background: var(--color-bg-page);
+    min-height: calc(100vh - 140px);
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    font-family: var(--font-sans);
+  }
+  
+  .dashboard-card {
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+    max-width: 600px;
+    width: 100%;
+    text-align: center;
+    margin-top: 50px;
+  }
+  
+  .dashboard-card h1 {
+    color: #1e2a3a;
+    margin-bottom: 25px;
+    font-size: 1.8rem;
+  }
+  
+  .stats-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 25px;
+  }
+  
+  .stat-box {
+    padding: 12px 20px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    border-radius: 8px;
+    background-color: #f9f9f9;
+    border-left: 6px solid transparent;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out;
+    display: block;
+  }
+  
+  .stat-box:hover {
+    background-color: #eef4ff;
+  }
+  
+  .stat-box.open {
+    border-color: #28a745;
+    color: #28a745;
+  }
+  .stat-box.in-progress {
+    border-color: #ffc107;
+    color: #856404;
+  }
+  .stat-box.resolved {
+    border-color: #17a2b8;
+    color: #138496;
+  }
+  .stat-box.closed {
+    border-color: #dc3545;
+    color: #c82333;
+  }
+  .stat-box.total {
+    border-color: #343a40;
+    color: #343a40;
+  }
+  
+  .chart-wrapper {
+    margin-top: 30px;
+    width: 100%;
+    height: 250px;
+  }
+  
+  .admin-links {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    flex-wrap: wrap;
+    margin-top: 25px;
+  }
+  
+  .admin-links a {
+    text-decoration: none;
+    color: white;
+    background: #007bff;
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition: background-color 0.2s ease-in-out;
+  }
+  
+  .admin-links a:hover {
+    background: #0056b3;
+  }
+  

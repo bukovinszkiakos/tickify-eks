@@ -11,3 +11,8 @@ output "ecr_user_secret_key" {
   value     = var.on_premise ? aws_iam_access_key.ecr_user_key[0].secret : null
   sensitive = true
 }
+
+output "frontend_repository_url" {
+  description = "Frontend ECR repository URL"
+  value       = aws_ecr_repository.frontend.repository_url
+}
