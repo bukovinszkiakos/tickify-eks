@@ -22,7 +22,6 @@ spec:
           ports:
             - containerPort: 8080
 
-          # AI modernization: enforce non-root at the Kubernetes level, consistent with USER app in Dockerfile
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false
@@ -35,7 +34,6 @@ spec:
               cpu: "1500m"
               memory: "1Gi"
 
-          # AI modernization: readiness probe uses /health (real DB check) — prevents traffic during startup/migrations
           readinessProbe:
             httpGet:
               path: /health
@@ -44,7 +42,6 @@ spec:
             periodSeconds: 10
             failureThreshold: 3
 
-          # AI modernization: liveness probe restarts stuck pods — generous delay accounts for slow cold starts
           livenessProbe:
             httpGet:
               path: /health
@@ -78,7 +75,6 @@ spec:
                   name: tickify-secret
                   key: Jwt__ValidAudience
 
-            # AI modernization: required by RoleSeeder — throws InvalidOperationException at startup if missing
             - name: SEEDING__ADMINPASSWORD
               valueFrom:
                 secretKeyRef:
@@ -91,7 +87,6 @@ spec:
                   name: tickify-secret
                   key: SEEDING__SUPERADMINPASSWORD
 
-            # AI modernization: required by S3FileStorageService — throws InvalidOperationException at startup if missing
             - name: AWS__BucketName
               valueFrom:
                 secretKeyRef:

@@ -9,7 +9,6 @@ namespace Tickify.Services.Authentication
     {
         private readonly RoleManager<IdentityRole> _roleManager;
         private readonly UserManager<IdentityUser> _userManager;
-        // AI modernization: IConfiguration injected to read seed passwords from environment variables
         private readonly IConfiguration _configuration;
 
         public RoleSeeder(RoleManager<IdentityRole> roleManager, UserManager<IdentityUser> userManager, IConfiguration configuration)
@@ -40,7 +39,6 @@ namespace Tickify.Services.Authentication
             var adminEmail = "admin@admin.com";
             var adminUser = await _userManager.FindByEmailAsync(adminEmail);
 
-            // AI modernization: passwords read from env vars (SEEDING__ADMINPASSWORD / SEEDING__SUPERADMINPASSWORD) — startup fails clearly if missing
             var adminPassword = _configuration["Seeding:AdminPassword"]
                 ?? throw new InvalidOperationException(
                     "Seeding:AdminPassword is not configured. Set the SEEDING__ADMINPASSWORD environment variable.");

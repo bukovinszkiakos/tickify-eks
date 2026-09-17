@@ -2,7 +2,6 @@
 
 WORKDIR /src
 
-# AI modernization: copy project files first so dotnet restore layer is cached independently of source changes
 COPY TickifyBackendOnly.sln .
 COPY Tickify.csproj .
 
@@ -22,7 +21,6 @@ ENV ASPNETCORE_URLS=http://+:8080
 
 EXPOSE 8080
 
-# AI modernization: run as non-root — required for EKS security policies and container best practices
 USER app
 
 ENTRYPOINT ["dotnet", "Tickify.dll"]

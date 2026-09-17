@@ -40,7 +40,6 @@ namespace Tickify.Services
                 TicketId = ticketId,
                 Comment = comment,
                 CommentedBy = userId,
-                // AI modernization: use UtcNow — consistent with all other timestamps in this file
                 CreatedAt = DateTime.UtcNow,
                 ImageUrl = imageUrl,
                 CommenterName = username

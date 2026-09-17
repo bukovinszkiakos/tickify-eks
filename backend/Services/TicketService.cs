@@ -103,7 +103,6 @@ namespace Tickify.Services
                 AssignedToName = t.AssignedTo != null && userMap.ContainsKey(t.AssignedTo)
                     ? userMap[t.AssignedTo] : null,
                 ImageUrl = t.ImageUrl,
-                // AI modernization: map already-fetched comment counts — were computed above but never assigned (always returned 0)
                 TotalCommentCount = commentCounts.FirstOrDefault(c => c.TicketId == t.Id)?.Total ?? 0,
                 UnreadCommentCount = unreadCounts.FirstOrDefault(u => u.TicketId == t.Id)?.Unread ?? 0
             }).ToList();
@@ -198,7 +197,6 @@ namespace Tickify.Services
                 Priority = priority,
                 Status = "Open",
                 CreatedBy = userId,
-                // AI modernization: use UtcNow — DateTime.Now was inconsistent with the rest of the file and wrong in containers
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
                 ImageUrl = imageUrl
@@ -512,7 +510,6 @@ namespace Tickify.Services
                 AssignedToName = t.AssignedTo != null && assignedUserMap.ContainsKey(t.AssignedTo)
                     ? assignedUserMap[t.AssignedTo] : null,
                 ImageUrl = t.ImageUrl,
-                // AI modernization: map already-fetched comment counts — were computed above but never assigned (always returned 0)
                 TotalCommentCount = commentCounts.FirstOrDefault(c => c.TicketId == t.Id)?.Total ?? 0,
                 UnreadCommentCount = unreadCounts.FirstOrDefault(u => u.TicketId == t.Id)?.Unread ?? 0
             }).ToList();

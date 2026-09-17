@@ -17,9 +17,7 @@
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.15" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.0" />
-    <!-- AI modernization: required for AddAWSService<> / AddDefaultAWSOptions / GetAWSOptions used in Program.cs -->
     <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.0" />
-    <!-- AI modernization: required for AddDbContextCheck<> used in the health check registration -->
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="8.0.15" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.0" />

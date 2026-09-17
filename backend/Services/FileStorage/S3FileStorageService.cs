@@ -11,7 +11,6 @@ namespace Tickify.Services.FileStorage
         public S3FileStorageService(IAmazonS3 s3Client, IConfiguration config)
         {
             _s3Client = s3Client;
-            // AI modernization: fail clearly at startup if bucket name is missing, not silently at first upload
             _bucketName = config["AWS:BucketName"]
                 ?? throw new InvalidOperationException(
                     "AWS:BucketName is not configured. Set the AWS__BucketName environment variable.");

@@ -29,11 +29,9 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddHttpContextAccessor();
 
-// AI modernization: real DB connectivity health check (previously returned static "healthy" string regardless of DB state)
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<ApplicationDbContext>("database");
 
-// AI modernization: named CORS policy, permissive for now — restrict to frontend origin once frontend is added
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
@@ -89,7 +87,6 @@ builder.Services.AddSwaggerGen(option =>
 
 var app = builder.Build();
 
-// AI modernization: global exception handler must be first in the pipeline so it catches all unhandled exceptions
 app.UseExceptionHandler(errorApp =>
 {
     errorApp.Run(async context =>
@@ -106,14 +103,12 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// AI modernization: CORS must be placed before Authentication and Authorization
 app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
-// AI modernization: MapHealthChecks replaces the static string endpoint — returns 503 if DB is unreachable
 app.MapHealthChecks("/health");
 app.MapGet("/", () => "Tickify API running");
 

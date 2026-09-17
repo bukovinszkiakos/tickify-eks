@@ -20,7 +20,6 @@ namespace Tickify.Controllers
         private readonly ITicketCommentService _ticketCommentService;
         private readonly UserManager<IdentityUser> _userManager;
         private readonly ApplicationDbContext _dbContext;
-        // AI modernization: IFileStorageService injected so comment images go to S3, not the container's local filesystem
         private readonly IFileStorageService _fileStorageService;
 
         public TicketCommentsController(
@@ -87,7 +86,6 @@ namespace Tickify.Controllers
 
             if (image != null && image.Length > 0)
             {
-                // AI modernization: upload to S3 via IFileStorageService — local disk writes are ephemeral in containers
                 imageUrl = await _fileStorageService.UploadFileAsync(
                     image.OpenReadStream(),
                     image.FileName,
