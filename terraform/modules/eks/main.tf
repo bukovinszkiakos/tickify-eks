@@ -27,7 +27,6 @@ resource "aws_eks_cluster" "this" {
     authentication_mode = "API_AND_CONFIG_MAP"
   }
 
-  # AI modernization: removed empty eks_sg (no rules, had no effect) — EKS manages control-plane SGs automatically
   vpc_config {
     subnet_ids = var.subnet_ids
   }
@@ -182,7 +181,7 @@ resource "aws_eks_addon" "ebs" {
   ]
 }
 
-# AI modernization: metrics-server enables HPA to read pod CPU metrics via the Kubernetes metrics API
+# metrics-server enables HPA to read pod CPU metrics via the Kubernetes metrics API
 resource "aws_eks_addon" "metrics_server" {
   cluster_name = aws_eks_cluster.this.name
   addon_name   = "metrics-server"
@@ -213,7 +212,7 @@ resource "aws_iam_role" "app_pod_role" {
   })
 }
 
-# AI modernization: removed AmazonS3ReadOnlyAccess (account-wide) — custom s3_upload_policy below provides least-privilege access to the uploads bucket only
+# Least-privilege S3 access scoped to the uploads bucket — replaces the account-wide AmazonS3ReadOnlyAccess
 resource "aws_iam_policy" "s3_upload_policy" {
   name = "${var.name}-s3-upload-policy"
 
@@ -239,7 +238,7 @@ resource "aws_iam_role_policy_attachment" "app_pod_s3_policy" {
 }
 
 
-# AI modernization: ALB Controller IRSA — allows the in-cluster controller to manage AWS ALBs via Ingress resources
+# ALB Controller IRSA — allows the in-cluster controller to manage AWS ALBs via Ingress resources
 resource "aws_iam_role" "alb_controller_role" {
   name = "${var.name}-alb-controller-role"
 

@@ -6,7 +6,7 @@ resource "aws_security_group" "rds" {
     from_port = 1433
     to_port   = 1433
     protocol  = "tcp"
-    # AI modernization: allow any resource within the VPC — RDS has no public endpoint so VPC boundary is the security perimeter
+    # Allow any resource within the VPC — RDS has no public endpoint so VPC boundary is the security perimeter
     cidr_blocks = [var.vpc_cidr]
   }
 
@@ -43,7 +43,7 @@ resource "aws_db_instance" "this" {
   engine         = "sqlserver-ex"
   instance_class = "db.t3.micro"
 
-  # AI modernization: single-AZ for dev/CV — multi_az doubles cost (~$67/month extra) with no benefit for a non-production workload
+  # single-AZ: dev/CV project only — multi_az doubles cost (~$67/month extra)
   multi_az = false
 
   username = var.db_username

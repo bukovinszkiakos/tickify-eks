@@ -51,7 +51,7 @@ resource "aws_subnet" "public" {
   tags = {
     Name                     = "${var.name}-public-${count.index}"
     "kubernetes.io/role/elb" = "1"
-    # AI modernization: required for AWS Load Balancer Controller subnet auto-discovery
+    # Required for AWS Load Balancer Controller subnet auto-discovery
     "kubernetes.io/cluster/${var.name}-eks" = "shared"
     Project                                 = var.name
     Owner                                   = var.owner
