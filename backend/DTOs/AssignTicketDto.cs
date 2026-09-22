@@ -1,4 +1,4 @@
 ﻿public class AssignTicketDto
 {
-    public string AdminUserId { get; set; }
+    public required string AdminUserId { get; set; }
 }

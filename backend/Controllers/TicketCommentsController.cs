@@ -82,7 +82,7 @@ namespace Tickify.Controllers
             if (userId == null)
                 return Unauthorized("User not found in token.");
 
-            string imageUrl = null;
+            string? imageUrl = null;
 
             if (image != null && image.Length > 0)
             {

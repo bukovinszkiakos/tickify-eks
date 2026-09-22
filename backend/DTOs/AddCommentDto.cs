@@ -2,6 +2,6 @@
 {
     public class AddCommentDto 
     {
-        public string Comment { get; set; }
+        public required string Comment { get; set; }
     }
 }

@@ -42,8 +42,9 @@ fi
 
 export TF_VAR_developer_iam_arn
 TF_VAR_developer_iam_arn="$(aws sts get-caller-identity --query Arn --output text)"
+_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 
-ok "AWS identity detected"
+ok "AWS identity detected: account ${_ACCOUNT_ID}"
 ok "Developer EKS access will be configured"
 
 
@@ -125,8 +126,69 @@ if [[ ! -f "terraform.tfvars" ]]; then
   fail "terraform/terraform.tfvars not found. Copy terraform.tfvars.example to terraform/terraform.tfvars and fill in your values."
 fi
 
+step "Provisioning Terraform state bucket"
+
+STATE_BUCKET="tickify-terraform-state-${_ACCOUNT_ID}"
+ok "State bucket: ${STATE_BUCKET}"
+
+_HEAD_RC=0
+_HEAD_HTTP="$(aws s3api head-bucket \
+  --bucket "${STATE_BUCKET}" \
+  --region "${AWS_REGION}" 2>&1)" || _HEAD_RC=$?
+
+if [[ "${_HEAD_RC}" -eq 0 ]]; then
+  ok "State bucket exists and is accessible"
+  if aws s3api head-object \
+       --bucket "${STATE_BUCKET}" \
+       --key "terraform/tickify.tfstate" \
+       --region "${AWS_REGION}" &>/dev/null; then
+    ok "Existing Terraform state found — will be reused"
+  else
+    ok "Bucket is empty — ready for initial Terraform state"
+  fi
+
+elif printf '%s' "${_HEAD_HTTP}" | grep -qi "403\|Forbidden\|Access Denied"; then
+  fail "State bucket '${STATE_BUCKET}' exists but cannot be accessed with the current AWS credentials. Check IAM permissions or confirm you are using the correct AWS account."
+
+else
+  ok "State bucket does not exist — creating"
+
+  aws s3api create-bucket \
+    --bucket "${STATE_BUCKET}" \
+    --region "${AWS_REGION}" \
+    --create-bucket-configuration LocationConstraint="${AWS_REGION}" \
+    >/dev/null
+  ok "Bucket created"
+
+  aws s3api put-bucket-versioning \
+    --bucket "${STATE_BUCKET}" \
+    --region "${AWS_REGION}" \
+    --versioning-configuration Status=Enabled
+  ok "Versioning enabled"
+
+  aws s3api put-bucket-encryption \
+    --bucket "${STATE_BUCKET}" \
+    --region "${AWS_REGION}" \
+    --server-side-encryption-configuration \
+      '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+  ok "Server-side encryption enabled"
+
+  aws s3api put-public-access-block \
+    --bucket "${STATE_BUCKET}" \
+    --region "${AWS_REGION}" \
+    --public-access-block-configuration \
+      BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+  ok "Public access blocked"
+
+  ok "State bucket ready: ${STATE_BUCKET}"
+fi
+unset _HEAD_RC _HEAD_HTTP
+
+
 step "Running: terraform init"
-terraform init
+terraform init \
+  -backend-config="bucket=${STATE_BUCKET}" \
+  -backend-config="region=${AWS_REGION}"
 
 step "Running: terraform validate"
 terraform validate

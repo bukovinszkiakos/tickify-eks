@@ -118,7 +118,11 @@ namespace Tickify.Controllers
         public async Task<IActionResult> GetAllTickets([FromQuery] string status = "", [FromQuery] string priority = "")
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
             var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+                return Unauthorized();
             var isSuperAdmin = await _userManager.IsInRoleAsync(user, "SuperAdmin");
 
             var tickets = await _ticketService.GetTicketsForAdminAsync(userId, isSuperAdmin);

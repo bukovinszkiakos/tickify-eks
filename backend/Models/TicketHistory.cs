@@ -6,11 +6,11 @@ namespace Tickify.Models
     {
         public int Id { get; set; }
         public int TicketId { get; set; }
-        public Ticket Ticket { get; set; }
-        public string ChangedBy { get; set; }
-        public IdentityUser ChangedByUser { get; set; }
-        public string OldStatus { get; set; }
-        public string NewStatus { get; set; }
+        public Ticket Ticket { get; set; } = null!;
+        public required string ChangedBy { get; set; }
+        public IdentityUser ChangedByUser { get; set; } = null!;
+        public required string OldStatus { get; set; }
+        public required string NewStatus { get; set; }
         public DateTime ChangedAt { get; set; } = DateTime.Now;
     }
 

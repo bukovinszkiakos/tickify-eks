@@ -18,7 +18,7 @@ namespace Tickify.Repositories
             return await _context.Tickets.ToListAsync();
         }
 
-        public async Task<Ticket> GetTicketByIdAsync(int id)
+        public async Task<Ticket?> GetTicketByIdAsync(int id)
         {
             return await _context.Tickets.FindAsync(id);
         }

@@ -33,6 +33,8 @@ namespace Tickify.Controllers
         public async Task<IActionResult> GetTickets()
         {
             var userId = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userId == null)
+                return Unauthorized("User ID not found in token.");
             bool isAdmin = IsAdminOrSuperAdmin();
 
             var ticketDtos = await _ticketService.GetTicketsForUserAsync(userId, isAdmin);
@@ -43,6 +45,8 @@ namespace Tickify.Controllers
         public async Task<IActionResult> GetTicket(int id)
         {
             var userId = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userId == null)
+                return Unauthorized("User ID not found in token.");
             bool isAdmin = IsAdminOrSuperAdmin();
 
             try
@@ -108,6 +112,8 @@ namespace Tickify.Controllers
                 return BadRequest(ModelState);
 
             var userId = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userId == null)
+                return Unauthorized("User ID not found in token.");
             bool isAdmin = IsAdminOrSuperAdmin();
 
             var scheme = Request.Scheme;
@@ -132,6 +138,8 @@ namespace Tickify.Controllers
         public async Task<IActionResult> DeleteTicket(int id)
         {
             var userId = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userId == null)
+                return Unauthorized("User ID not found in token.");
             bool isAdmin = IsAdminOrSuperAdmin();
 
             try
@@ -153,6 +161,8 @@ namespace Tickify.Controllers
         public async Task<IActionResult> DeleteTicketImage(int id)
         {
             var userId = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userId == null)
+                return Unauthorized("User ID not found in token.");
             bool isAdmin = IsAdminOrSuperAdmin();
 
             try

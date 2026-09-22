@@ -47,7 +47,7 @@ namespace Tickify.Services.Authentication
             var isPasswordValid = await _userManager.CheckPasswordAsync(user, password);
             if (!isPasswordValid)
             {
-                var authResult = new AuthResult(false, email, user.UserName, "");
+                var authResult = new AuthResult(false, email, user.UserName ?? "", "");
                 authResult.ErrorMessages.Add("BadCredentials", "Invalid password");
                 return authResult;
             }
@@ -56,7 +56,7 @@ namespace Tickify.Services.Authentication
 
             var token = _tokenService.CreateToken(user, roles.ToList());
 
-            return new AuthResult(true, user.Email, user.UserName, token);
+            return new AuthResult(true, user.Email ?? "", user.UserName ?? "", token);
         }
     }
 }

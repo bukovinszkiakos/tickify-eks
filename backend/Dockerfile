@@ -5,11 +5,11 @@ WORKDIR /src
 COPY TickifyBackendOnly.sln .
 COPY Tickify.csproj .
 
-RUN dotnet restore TickifyBackendOnly.sln
+RUN dotnet restore Tickify.csproj
 
 COPY . .
 
-RUN dotnet publish TickifyBackendOnly.sln -c Release -o /app/publish
+RUN dotnet publish Tickify.csproj -c Release -o /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 

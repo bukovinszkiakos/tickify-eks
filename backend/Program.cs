@@ -63,7 +63,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer = jwtSection["ValidIssuer"],
             ValidAudience = jwtSection["ValidAudience"],
             IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(jwtSection["IssuerSigningKey"])),
+                Encoding.UTF8.GetBytes(jwtSection["IssuerSigningKey"]
+                    ?? throw new InvalidOperationException("Jwt:IssuerSigningKey is not configured."))),
             RoleClaimType = ClaimTypes.Role
         };
 

@@ -45,8 +45,8 @@ namespace Tickify.Services.Authentication
                 new Claim(JwtRegisteredClaimNames.Iat,
                     EpochTime.GetIntDate(DateTime.UtcNow).ToString(CultureInfo.InvariantCulture), ClaimValueTypes.Integer64),
                 new Claim(ClaimTypes.NameIdentifier, user.Id),
-                new Claim(ClaimTypes.Name, user.UserName),
-                new Claim(ClaimTypes.Email, user.Email)
+                new Claim(ClaimTypes.Name, user.UserName ?? ""),
+                new Claim(ClaimTypes.Email, user.Email ?? "")
             };
 
             foreach (var role in roles)
@@ -59,7 +59,8 @@ namespace Tickify.Services.Authentication
 
         private SigningCredentials CreateSigningCredentials()
         {
-            var key = Encoding.UTF8.GetBytes(_configuration["Jwt:IssuerSigningKey"]);
+            var key = Encoding.UTF8.GetBytes(_configuration["Jwt:IssuerSigningKey"]
+                ?? throw new InvalidOperationException("Jwt:IssuerSigningKey is not configured."));
             return new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256);
         }
     }

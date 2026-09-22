@@ -5,7 +5,7 @@ namespace Tickify.Services
 {
     public interface ITicketService
     {
-        Task<IEnumerable<TicketDto>> GetTicketsForUserAsync(string userId, bool isAdmin);
+        Task<IEnumerable<TicketDto>> GetTicketsForUserAsync(string? userId, bool isAdmin);
 
         Task<TicketDto> GetTicketDtoByIdAsync(int id, string userId, bool isAdmin);
 

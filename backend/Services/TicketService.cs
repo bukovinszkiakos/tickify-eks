@@ -38,7 +38,7 @@ namespace Tickify.Services
     _fileStorageService = fileStorageService;
 }
 
-        public async Task<IEnumerable<TicketDto>> GetTicketsForUserAsync(string userId, bool isAdmin)
+        public async Task<IEnumerable<TicketDto>> GetTicketsForUserAsync(string? userId, bool isAdmin)
         {
             var tickets = await _ticketRepository.GetAllTicketsAsync();
 
@@ -96,7 +96,7 @@ namespace Tickify.Services
                 UpdatedAt = t.UpdatedAt,
                 Status = t.Status,
                 Priority = t.Priority,
-                CreatedBy = t.CreatedBy,
+                CreatedBy = t.CreatedBy ?? "",
                 CreatedByName = t.CreatedBy != null && userMap.ContainsKey(t.CreatedBy)
                     ? userMap[t.CreatedBy] : "Unknown",
                 AssignedTo = t.AssignedTo,
@@ -153,7 +153,7 @@ namespace Tickify.Services
                 UpdatedAt = ticket.UpdatedAt,
                 Status = ticket.Status,
                 Priority = ticket.Priority,
-                CreatedBy = ticket.CreatedBy,
+                CreatedBy = ticket.CreatedBy ?? "",
                 CreatedByName = createdByName,
                 AssignedTo = ticket.AssignedTo,
                 AssignedToName = assignedToName,
@@ -503,7 +503,7 @@ namespace Tickify.Services
                 UpdatedAt = t.UpdatedAt,
                 Status = t.Status,
                 Priority = t.Priority,
-                CreatedBy = t.CreatedBy,
+                CreatedBy = t.CreatedBy ?? "",
                 CreatedByName = t.CreatedBy != null && creatorUserMap.ContainsKey(t.CreatedBy)
                     ? creatorUserMap[t.CreatedBy] : "Unknown",
                 AssignedTo = t.AssignedTo,
@@ -583,10 +583,11 @@ namespace Tickify.Services
             }
 
             var assignedToTrimmed = (ticket.AssignedTo ?? "").Trim();
-            var currentUserTrimmed = (currentUserId ?? "").Trim();
+            var currentUserTrimmed = currentUserId.Trim();
 
+            var currentUser = await _userManager.FindByIdAsync(currentUserId);
             if (!string.Equals(assignedToTrimmed, currentUserTrimmed, StringComparison.OrdinalIgnoreCase) &&
-                !await _userManager.IsInRoleAsync(await _userManager.FindByIdAsync(currentUserId), "SuperAdmin"))
+                (currentUser == null || !await _userManager.IsInRoleAsync(currentUser, "SuperAdmin")))
             {
                 throw new UnauthorizedAccessException("Only the assigned admin or a SuperAdmin can reassign this ticket.");
             }

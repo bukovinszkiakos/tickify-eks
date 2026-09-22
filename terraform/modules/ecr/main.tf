@@ -1,9 +1,6 @@
 resource "aws_ecr_repository" "this" {
-  name = "${var.name}-backend"
-
-  lifecycle {
-    prevent_destroy = true   
-  }
+  name         = "${var.name}-backend"
+  force_delete = true
 
   image_scanning_configuration {
     scan_on_push = true
@@ -98,11 +95,8 @@ resource "aws_ecr_lifecycle_policy" "this" {
 }
 
 resource "aws_ecr_repository" "frontend" {
-  name = "${var.name}-frontend"
-
-  lifecycle {
-    prevent_destroy = true
-  }
+  name         = "${var.name}-frontend"
+  force_delete = true
 
   image_scanning_configuration {
     scan_on_push = true
