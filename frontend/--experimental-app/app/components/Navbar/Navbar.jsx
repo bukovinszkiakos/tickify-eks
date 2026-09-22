@@ -3,7 +3,12 @@
 import React from "react";
 import Link from "next/link";
 import { useAuth } from "../../context/AuthContext";
-import { Player } from "@lottiefiles/react-lottie-player";
+import dynamic from "next/dynamic";
+
+const Player = dynamic(
+  () => import("@lottiefiles/react-lottie-player").then(m => ({ default: m.Player })),
+  { ssr: false }
+);
 import { Ticket, Settings, Shield } from "lucide-react";
 import NotificationBell from "../NotificationBell/NotificationBell";
 import "../../styles/Navbar.css";
