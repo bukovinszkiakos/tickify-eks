@@ -1,2 +1,17 @@
-db_username = "your-username"
-db_password = "your-password"
+region            = "eu-central-1"
+db_username       = "adminuser"
+github_repository = "bukovinszkiakos/tickify-eks"
+
+# developer_iam_arn is detected and set automatically by bootstrap.sh
+# via the TF_VAR_developer_iam_arn environment variable.
+# You do not need to set this manually when running bootstrap.sh.
+# If you are running Terraform directly (without bootstrap.sh), set it to
+# your IAM user or role ARN to get cluster-admin EKS access.
+# Leave empty or omit to skip developer access entry creation.
+# developer_iam_arn = ""
+
+# db_password must NOT be placed in this file.
+# bootstrap.sh will prompt for it securely using hidden terminal input.
+# Alternatively, export it in your shell before running bootstrap.sh:
+#   export TF_VAR_db_password='your-password'
+# The password is never written to any file by bootstrap.sh.

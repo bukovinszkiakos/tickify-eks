@@ -34,3 +34,13 @@ output "frontend_ecr_repository_url" {
   description = "Frontend ECR repository URL"
   value       = module.ecr.frontend_repository_url
 }
+
+output "db_username" {
+  description = "RDS database username — used by bootstrap.sh to construct the DB_CONNECTION_STRING GitHub secret"
+  value       = var.db_username
+}
+
+output "vpc_id" {
+  description = "VPC ID — passed to the ALB Controller Helm chart via --set vpcId"
+  value       = module.network.vpc_id
+}

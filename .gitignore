@@ -33,3 +33,5 @@ terraform.tfstate.*
 *.tfvars
 
 k8s/secret.yaml
+
+admin
