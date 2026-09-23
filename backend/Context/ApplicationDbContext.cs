@@ -37,7 +37,23 @@ namespace Tickify.Context
                 .HasOne(t => t.Creator)
                 .WithMany()
                 .HasForeignKey(t => t.CreatedBy)
-                .OnDelete(DeleteBehavior.NoAction);  
+                .OnDelete(DeleteBehavior.NoAction);
+
+            modelBuilder.Entity<CommentReadStatus>()
+                .Property(r => r.UserId)
+                .HasMaxLength(450);
+
+            modelBuilder.Entity<CommentReadStatus>()
+                .HasIndex(r => new { r.CommentId, r.UserId })
+                .HasDatabaseName("IX_CommentReadStatuses_CommentId_UserId");
+
+            modelBuilder.Entity<Notification>()
+                .Property(n => n.UserId)
+                .HasMaxLength(450);
+
+            modelBuilder.Entity<Notification>()
+                .HasIndex(n => new { n.UserId, n.CreatedAt })
+                .HasDatabaseName("IX_Notifications_UserId_CreatedAt");
         }
 
     }
