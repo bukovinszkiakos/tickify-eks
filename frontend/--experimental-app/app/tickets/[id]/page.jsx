@@ -60,7 +60,7 @@ export default function TicketDetailPage() {
   };
 
   useEffect(() => {
-    if (!id || id === "null") return;
+    if (!id || id === "null" || !user) return;
     fetchTicketData().catch((err) => {
       console.error(err);
       setError("Ticket not found or deleted.");
