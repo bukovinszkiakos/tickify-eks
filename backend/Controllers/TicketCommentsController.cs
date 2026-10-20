@@ -101,6 +101,14 @@ namespace Tickify.Controllers
             }
             catch (KeyNotFoundException ex)
             {
+                if (!string.IsNullOrEmpty(imageUrl))
+                {
+                    try { await _fileStorageService.DeleteFileAsync(imageUrl); }
+                    catch (Exception cleanupEx)
+                    {
+                        Console.Error.WriteLine($"S3 delete failed for key '{imageUrl}': {cleanupEx.Message}");
+                    }
+                }
                 return NotFound(ex.Message);
             }
         }
