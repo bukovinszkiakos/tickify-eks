@@ -309,6 +309,18 @@ namespace Tickify.Services
             }
 
             await _ticketRepository.SaveChangesAsync();
+
+            if (imageChanged && !string.IsNullOrEmpty(oldImageUrl))
+            {
+                try
+                {
+                    await _fileStorageService.DeleteFileAsync(oldImageUrl);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"S3 delete failed for key '{oldImageUrl}': {ex.Message}");
+                }
+            }
         }
 
 
@@ -390,6 +402,8 @@ namespace Tickify.Services
                 throw new UnauthorizedAccessException("Not allowed to delete this ticket.");
             }
 
+            var imageKey = ticket.ImageUrl;
+
             var oldNotifications = _dbContext.Notifications
                 .Where(n => n.TicketId == ticket.Id.ToString());
             _dbContext.Notifications.RemoveRange(oldNotifications);
@@ -411,6 +425,18 @@ namespace Tickify.Services
             }
 
             await _ticketRepository.SaveChangesAsync();
+
+            if (!string.IsNullOrEmpty(imageKey))
+            {
+                try
+                {
+                    await _fileStorageService.DeleteFileAsync(imageKey);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"S3 delete failed for key '{imageKey}': {ex.Message}");
+                }
+            }
         }
 
 
@@ -433,20 +459,30 @@ namespace Tickify.Services
                 return false;
             }
 
+            var keyToDelete = ticket.ImageUrl;
+
             try
             {
-
                 ticket.ImageUrl = null;
                 _ticketRepository.UpdateTicket(ticket);
                 await _ticketRepository.SaveChangesAsync();
-
-                return true;
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error deleting image: {ex.Message}");
                 return false;
             }
+
+            try
+            {
+                await _fileStorageService.DeleteFileAsync(keyToDelete);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"S3 delete failed for key '{keyToDelete}': {ex.Message}");
+            }
+
+            return true;
         }
 
         public async Task<IEnumerable<TicketDto>> GetTicketsForAdminAsync(string adminUserId, bool isSuperAdmin)

@@ -48,5 +48,18 @@ namespace Tickify.Services.FileStorage
 
             return Task.FromResult<string?>(_s3Client.GetPreSignedURL(request));
         }
+
+        public async Task DeleteFileAsync(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return;
+
+            var request = new DeleteObjectRequest
+            {
+                BucketName = _bucketName,
+                Key = key
+            };
+
+            await _s3Client.DeleteObjectAsync(request);
+        }
     }
 }
