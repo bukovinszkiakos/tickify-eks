@@ -34,6 +34,9 @@ jobs:
       - name: Build
         run: dotnet build backend/Tickify.csproj --no-restore
 
+      - name: Run backend tests
+        run: dotnet test backend.Tests/backend.Tests.csproj --logger "console;verbosity=minimal"
+
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:

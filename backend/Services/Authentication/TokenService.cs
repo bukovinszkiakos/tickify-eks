@@ -22,8 +22,6 @@ namespace Tickify.Services.Authentication
             var expiration = DateTime.UtcNow.AddMinutes(ExpirationMinutes);
             var claims = CreateClaims(user, roles);
 
-            claims.Add(new Claim("exp", ((DateTimeOffset)expiration).ToUnixTimeSeconds().ToString()));
-
             var signingCredentials = CreateSigningCredentials();
             var token = new JwtSecurityToken(
                 issuer: _configuration["Jwt:ValidIssuer"],
