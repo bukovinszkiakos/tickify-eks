@@ -186,7 +186,20 @@
   .assign-button:hover {
     background-color: #218838;
   }
-  
+
+  .release-button {
+    background-color: #e07b00;
+    color: white;
+    border: none;
+    padding: 5px 8px;
+    border-radius: 4px;
+    margin-top: 4px;
+    cursor: pointer;
+  }
+  .release-button:hover {
+    background-color: #c06a00;
+  }
+
   .mine-filter {
     margin-top: 10px;
     font-weight: 500;

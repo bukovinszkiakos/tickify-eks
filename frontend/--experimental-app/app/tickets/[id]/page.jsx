@@ -113,6 +113,27 @@ export default function TicketDetailPage() {
     }
   };
 
+  const handleReleaseTicket = async () => {
+    try {
+      const res = await fetch(`/api/admin/tickets/${id}/release`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (res.status === 403) {
+        setError("You are not authorized to release this ticket.");
+        return;
+      }
+      if (!res.ok) {
+        setError("Failed to release ticket.");
+        return;
+      }
+      await fetchTicketData();
+      await fetchComments();
+    } catch (err) {
+      setError("Failed to release ticket.");
+    }
+  };
+
   const handleAdminStatusChange = async (e) => {
     const newStatus = e.target.value;
     setStatus(newStatus);
@@ -175,6 +196,11 @@ export default function TicketDetailPage() {
     (!user?.isAdmin && user?.id === ticket?.createdBy) ||
     (user?.isAdmin && user?.id === ticket?.assignedTo) ||
     user?.roles?.includes("SuperAdmin");
+
+  const canRelease =
+    user?.isAdmin &&
+    !!ticket?.assignedTo &&
+    (user.id === ticket.assignedTo || user?.isSuperAdmin);
     if (error) return <p className="error-message">{error}</p>;
     if (!ticket) return <p className="loading-message">Loading ticket...</p>;
   
@@ -282,6 +308,12 @@ export default function TicketDetailPage() {
             {canDelete && (
               <button className="delete-btn" onClick={handleDelete}>
                 <Trash2 size={16} /> Delete Ticket
+              </button>
+            )}
+
+            {canRelease && (
+              <button className="release-btn" onClick={handleReleaseTicket}>
+                Release Ticket
               </button>
             )}
           </div>

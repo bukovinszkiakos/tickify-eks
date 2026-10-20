@@ -202,26 +202,39 @@ namespace Tickify.Controllers
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
+            var isSuperAdmin = User.IsInRole("SuperAdmin");
+
             try
             {
-                await _ticketService.AssignTicketToAdminAsync(ticketId, userId);
+                await _ticketService.AssignTicketToAdminAsync(ticketId, userId, isSuperAdmin);
                 return Ok(new { message = "Ticket successfully assigned to you." });
             }
             catch (KeyNotFoundException ex)
             {
                 return NotFound(ex.Message);
             }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
         }
 
-        [Authorize(Roles = "Admin,SuperAdmin")]
+        [Authorize(Roles = "SuperAdmin")]
         [HttpPost("tickets/{ticketId}/assign")]
         public async Task<IActionResult> ReassignTicket(int ticketId, [FromBody] AssignTicketDto dto)
         {
             var adminId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(adminId)) return Unauthorized();
 
-            await _ticketService.AssignTicketToAdminAsync(ticketId, dto.AdminUserId);
-            return Ok(new { message = "Ticket reassigned successfully." });
+            try
+            {
+                await _ticketService.AssignTicketToAdminAsync(ticketId, dto.AdminUserId, isSuperAdmin: true);
+                return Ok(new { message = "Ticket reassigned successfully." });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ex.Message);
+            }
         }
 
         [Authorize(Roles = "Admin,SuperAdmin")]
@@ -241,14 +254,39 @@ namespace Tickify.Controllers
             {
                 return NotFound(new { message = "Ticket not found.", error = ex.Message });
             }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, new { message = ex.Message });
+            }
             catch (Exception ex)
             {
                 return StatusCode(500, new { message = "Internal Server Error.", error = ex.Message });
             }
-
         }
 
+        [Authorize(Roles = "Admin,SuperAdmin")]
+        [HttpPost("tickets/{ticketId}/release")]
+        public async Task<IActionResult> ReleaseTicket(int ticketId)
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
+            var isSuperAdmin = User.IsInRole("SuperAdmin");
+
+            try
+            {
+                await _ticketService.ReleaseTicketAsync(ticketId, userId, isSuperAdmin);
+                return Ok(new { message = "Ticket released successfully." });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, new { message = ex.Message });
+            }
+        }
 
 
     }

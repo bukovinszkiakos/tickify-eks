@@ -587,11 +587,18 @@ namespace Tickify.Services
         }
 
 
-        public async Task AssignTicketToAdminAsync(int ticketId, string adminUserId)
+        public async Task AssignTicketToAdminAsync(int ticketId, string adminUserId, bool isSuperAdmin)
         {
             var ticket = await _ticketRepository.GetTicketByIdAsync(ticketId);
             if (ticket == null)
                 throw new KeyNotFoundException("Ticket not found.");
+
+            var targetAdmin = await _userManager.FindByIdAsync(adminUserId);
+            if (targetAdmin == null)
+                throw new KeyNotFoundException("Admin user not found.");
+
+            if (!isSuperAdmin && !string.IsNullOrEmpty(ticket.AssignedTo) && ticket.AssignedTo != adminUserId)
+                throw new InvalidOperationException("Ticket is already assigned to another admin.");
 
             ticket.AssignedTo = adminUserId;
             ticket.UpdatedAt = DateTime.UtcNow;
@@ -604,13 +611,17 @@ namespace Tickify.Services
         {
             var ticket = await _ticketRepository.GetTicketByIdAsync(ticketId);
             if (ticket == null)
-            {
                 throw new KeyNotFoundException("Ticket not found.");
-            }
+
+            var currentUser = await _userManager.FindByIdAsync(currentUserId);
+            var callerIsSuperAdmin = currentUser != null && await _userManager.IsInRoleAsync(currentUser, "SuperAdmin");
+
+            if (!callerIsSuperAdmin && !string.IsNullOrWhiteSpace(newAdminId))
+                throw new UnauthorizedAccessException("Only a SuperAdmin can reassign a ticket to another admin.");
 
             if (string.IsNullOrEmpty(ticket.AssignedTo))
             {
-                ticket.AssignedTo = newAdminId;
+                ticket.AssignedTo = string.IsNullOrWhiteSpace(newAdminId) ? null : newAdminId;
                 ticket.UpdatedAt = DateTime.UtcNow;
 
                 _ticketRepository.UpdateTicket(ticket);
@@ -621,14 +632,26 @@ namespace Tickify.Services
             var assignedToTrimmed = (ticket.AssignedTo ?? "").Trim();
             var currentUserTrimmed = currentUserId.Trim();
 
-            var currentUser = await _userManager.FindByIdAsync(currentUserId);
-            if (!string.Equals(assignedToTrimmed, currentUserTrimmed, StringComparison.OrdinalIgnoreCase) &&
-                (currentUser == null || !await _userManager.IsInRoleAsync(currentUser, "SuperAdmin")))
-            {
+            if (!string.Equals(assignedToTrimmed, currentUserTrimmed, StringComparison.OrdinalIgnoreCase) && !callerIsSuperAdmin)
                 throw new UnauthorizedAccessException("Only the assigned admin or a SuperAdmin can reassign this ticket.");
-            }
 
             ticket.AssignedTo = string.IsNullOrWhiteSpace(newAdminId) ? null : newAdminId;
+            ticket.UpdatedAt = DateTime.UtcNow;
+
+            _ticketRepository.UpdateTicket(ticket);
+            await _ticketRepository.SaveChangesAsync();
+        }
+
+        public async Task ReleaseTicketAsync(int ticketId, string requestingAdminId, bool isSuperAdmin)
+        {
+            var ticket = await _ticketRepository.GetTicketByIdAsync(ticketId);
+            if (ticket == null)
+                throw new KeyNotFoundException("Ticket not found.");
+
+            if (!string.IsNullOrEmpty(ticket.AssignedTo) && !isSuperAdmin && ticket.AssignedTo != requestingAdminId)
+                throw new UnauthorizedAccessException("Only the assigned admin or a SuperAdmin can release this ticket.");
+
+            ticket.AssignedTo = null;
             ticket.UpdatedAt = DateTime.UtcNow;
 
             _ticketRepository.UpdateTicket(ticket);

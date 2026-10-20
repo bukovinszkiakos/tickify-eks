@@ -169,6 +169,14 @@ button:hover {
   background-color: #c32f3f;
 }
 
+.release-btn {
+  background-color: #e07b00;
+  color: white;
+}
+.release-btn:hover {
+  background-color: #c06a00;
+}
+
 .save-btn {
   background-color: #2a9d8f;
   color: white;

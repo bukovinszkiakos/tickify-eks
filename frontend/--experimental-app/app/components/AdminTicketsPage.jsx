@@ -65,10 +65,43 @@ export default function AdminTicketsPage() {
 
   async function handleAssignToMe(ticketId) {
     try {
-      await apiPost(`/api/admin/tickets/${ticketId}/assign-to-me`, {});
+      const res = await fetch(`/api/admin/tickets/${ticketId}/assign-to-me`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      if (res.status === 409) {
+        setError("This ticket is already assigned to another admin.");
+        return;
+      }
+      if (!res.ok) {
+        setError("Failed to assign ticket.");
+        return;
+      }
       await fetchTickets();
     } catch (err) {
       setError("Failed to assign ticket.");
+    }
+  }
+
+  async function handleReleaseTicket(ticketId) {
+    try {
+      const res = await fetch(`/api/admin/tickets/${ticketId}/release`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      if (res.status === 403) {
+        setError("You are not authorized to release this ticket.");
+        return;
+      }
+      if (!res.ok) {
+        setError("Failed to release ticket.");
+        return;
+      }
+      await fetchTickets();
+    } catch (err) {
+      setError("Failed to release ticket.");
     }
   }
 
@@ -248,23 +281,12 @@ export default function AdminTicketsPage() {
                       </button>
                     </div>
 
-                    <select
-                      value={reassignValues[ticket.id] ?? ""}
-                      onChange={(e) => {
-                        setReassignValues((prev) => ({ ...prev, [ticket.id]: e.target.value }));
-                        handleReassign(ticket.id, e.target.value);
-                      }}
+                    <button
+                      className="release-button"
+                      onClick={() => handleReleaseTicket(ticket.id)}
                     >
-                      <option value="">Reassign to...</option>
-                      {admins
-                        .filter((admin) => admin.id !== ticket.assignedTo)
-                        .map((admin) => (
-                          <option key={admin.id} value={admin.id}>
-                            {admin.userName || admin.email}
-                          </option>
-                        ))}
-                      <option value="null">Unassign</option>
-                    </select>
+                      Release Ticket
+                    </button>
                   </>
                 ) : null}
               </div>
