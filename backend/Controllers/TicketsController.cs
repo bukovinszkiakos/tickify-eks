@@ -29,6 +29,22 @@ namespace Tickify.Controllers
             return roles.Contains("Admin") || roles.Contains("SuperAdmin");
         }
 
+        private const long MaxImageBytes = 5_242_880;
+        private static readonly HashSet<string> AllowedContentTypes = new() { "image/jpeg", "image/png", "image/gif", "image/webp" };
+        private static readonly HashSet<string> AllowedExtensions = new() { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
+
+        private static (bool Valid, string Error) ValidateImage(IFormFile image)
+        {
+            if (image.Length > MaxImageBytes)
+                return (false, "Image must not exceed 5 MB.");
+            if (!AllowedContentTypes.Contains(image.ContentType.ToLowerInvariant()))
+                return (false, "Unsupported image type. Allowed: JPEG, PNG, GIF, WebP.");
+            var ext = Path.GetExtension(image.FileName).ToLowerInvariant();
+            if (!AllowedExtensions.Contains(ext))
+                return (false, "Unsupported file extension. Allowed: .jpg, .jpeg, .png, .gif, .webp.");
+            return (true, string.Empty);
+        }
+
         [HttpGet]
         public async Task<IActionResult> GetTickets()
         {
@@ -87,6 +103,12 @@ namespace Tickify.Controllers
             var scheme = Request.Scheme;
             var host = Request.Host.Value;
 
+            if (image != null && image.Length > 0)
+            {
+                var (valid, error) = ValidateImage(image);
+                if (!valid) return BadRequest(error);
+            }
+
             try
             {
                 var ticketDto = await _ticketService.CreateTicketAsync(title, description, priority, userId, isAdmin, image, scheme, host);
@@ -118,6 +140,12 @@ namespace Tickify.Controllers
 
             var scheme = Request.Scheme;
             var host = Request.Host.Value;
+
+            if (image != null && image.Length > 0)
+            {
+                var (valid, error) = ValidateImage(image);
+                if (!valid) return BadRequest(error);
+            }
 
             try
             {

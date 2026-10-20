@@ -46,13 +46,13 @@ public class TicketCommentControllerImageTests
         return controller;
     }
 
-    private static IFormFile CreateFormFile(string fileName = "test.jpg", long length = 100)
+    private static IFormFile CreateFormFile(string fileName = "test.jpg", long length = 100, string contentType = "image/jpeg")
     {
         var fileMock = new Mock<IFormFile>();
         fileMock.Setup(f => f.Length).Returns(length);
         fileMock.Setup(f => f.FileName).Returns(fileName);
-        fileMock.Setup(f => f.ContentType).Returns("image/jpeg");
-        fileMock.Setup(f => f.OpenReadStream()).Returns(new MemoryStream(new byte[(int)length]));
+        fileMock.Setup(f => f.ContentType).Returns(contentType);
+        fileMock.Setup(f => f.OpenReadStream()).Returns(new MemoryStream(new byte[(int)Math.Min(length, 1024)]));
         return fileMock.Object;
     }
 
@@ -114,5 +114,66 @@ public class TicketCommentControllerImageTests
         Assert.IsType<NotFoundObjectResult>(result);
         fsMock.Verify(s => s.DeleteFileAsync(It.IsAny<string>()), Times.Never);
         fsMock.Verify(s => s.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AddComment_OversizedImage_ReturnsBadRequest_UploadNeverCalled()
+    {
+        var commentMock = new Mock<ITicketCommentService>();
+        var fsMock = new Mock<IFileStorageService>();
+
+        var controller = BuildController(commentMock, fsMock);
+        var result = await controller.AddComment(1, "hello", CreateFormFile(length: 6_000_000));
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        fsMock.Verify(s => s.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AddComment_DisallowedContentType_ReturnsBadRequest_UploadNeverCalled()
+    {
+        var commentMock = new Mock<ITicketCommentService>();
+        var fsMock = new Mock<IFileStorageService>();
+
+        var controller = BuildController(commentMock, fsMock);
+        var result = await controller.AddComment(1, "hello", CreateFormFile(contentType: "application/octet-stream"));
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        fsMock.Verify(s => s.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AddComment_DisallowedExtension_ReturnsBadRequest_UploadNeverCalled()
+    {
+        var commentMock = new Mock<ITicketCommentService>();
+        var fsMock = new Mock<IFileStorageService>();
+
+        var controller = BuildController(commentMock, fsMock);
+        var result = await controller.AddComment(1, "hello", CreateFormFile(fileName: "payload.exe"));
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        fsMock.Verify(s => s.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AddComment_ValidImage_UploadsAndSucceeds()
+    {
+        var commentMock = new Mock<ITicketCommentService>();
+        var fsMock = new Mock<IFileStorageService>();
+
+        fsMock.Setup(s => s.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync("img/valid.jpg");
+        fsMock.Setup(s => s.GetFileUrlAsync(It.IsAny<string>(), It.IsAny<int>()))
+            .ReturnsAsync("https://cdn.example.com/img/valid.jpg");
+        commentMock.Setup(c => c.AddCommentAsync(
+            It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), It.IsAny<string?>()))
+            .Returns(Task.CompletedTask);
+
+        var controller = BuildController(commentMock, fsMock);
+        var result = await controller.AddComment(1, "hello", CreateFormFile());
+
+        Assert.IsType<OkObjectResult>(result);
+        fsMock.Verify(s => s.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once);
     }
 }
