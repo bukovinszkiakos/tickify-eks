@@ -4,10 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TERRAFORM_DIR="$(cd "${SCRIPT_DIR}/../terraform" && pwd)"
 
-EXPECTED_REGION="eu-central-1"
-CLUSTER_NAME="akos-tickify-eks"
-RDS_IDENTIFIER="akos-tickify-db"
-ALB_CLUSTER_TAG_KEY="kubernetes.io/cluster/${CLUSTER_NAME}"
 ALB_CLUSTER_TAG_VALUE="owned"
 ALB_SG_TAG_KEY="elbv2.k8s.aws/cluster"
 
@@ -15,6 +11,23 @@ step()  { printf "\n>>> %s\n" "$1"; }
 ok()    { printf "[OK]    %s\n" "$1"; }
 warn()  { printf "[WARN]  %s\n" "$1" >&2; }
 fail()  { printf "\n[ERROR] %s\n" "$1" >&2; exit 1; }
+
+# ── Region: read from terraform.tfvars or TF_VAR_region ──────────────────────
+_TF_REGION_RAW=""
+if [[ -f "${TERRAFORM_DIR}/terraform.tfvars" ]]; then
+  _TF_REGION_RAW="$(grep -E '^\s*region\s*=' "${TERRAFORM_DIR}/terraform.tfvars" \
+    | grep -v '^\s*#' \
+    | sed 's/[^"]*"\([^"]*\)".*/\1/' \
+    | head -1)"
+fi
+if [[ -z "${_TF_REGION_RAW}" ]]; then
+  _TF_REGION_RAW="${TF_VAR_region:-}"
+fi
+[[ -z "${_TF_REGION_RAW}" ]] && \
+  fail "Cannot determine AWS region. Set 'region = \"...\"' in terraform.tfvars or export TF_VAR_region before running destroy.sh."
+AWS_REGION="${_TF_REGION_RAW}"
+unset _TF_REGION_RAW
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -30,8 +43,8 @@ _ACTUAL_REGION="$(aws configure get region 2>/dev/null || echo "")"
 if [[ -z "${_ACTUAL_REGION}" ]]; then
   _ACTUAL_REGION="${AWS_DEFAULT_REGION:-}"
 fi
-if [[ "${_ACTUAL_REGION}" != "${EXPECTED_REGION}" ]]; then
-  fail "Region mismatch. Expected ${EXPECTED_REGION}, got '${_ACTUAL_REGION}'. Aborting to protect unrelated regions."
+if [[ "${_ACTUAL_REGION}" != "${AWS_REGION}" ]]; then
+  fail "Region mismatch. Configured AWS region is '${_ACTUAL_REGION}' but terraform.tfvars specifies '${AWS_REGION}'. Aborting to protect unrelated regions."
 fi
 ok "AWS region verified: ${_ACTUAL_REGION}"
 unset _ACTUAL_REGION
@@ -40,7 +53,7 @@ ok "State bucket: ${STATE_BUCKET}"
 _STATE_HEAD_RC=0
 _STATE_HEAD_HTTP="$(aws s3api head-bucket \
   --bucket "${STATE_BUCKET}" \
-  --region "${EXPECTED_REGION}" 2>&1)" || _STATE_HEAD_RC=$?
+  --region "${AWS_REGION}" 2>&1)" || _STATE_HEAD_RC=$?
 
 if [[ "${_STATE_HEAD_RC}" -eq 0 ]]; then
   ok "State bucket accessible"
@@ -53,16 +66,46 @@ unset _STATE_HEAD_RC _STATE_HEAD_HTTP
 
 cd "${TERRAFORM_DIR}"
 
-if [[ ! -f "terraform.tfvars" ]]; then
-  fail "terraform/terraform.tfvars not found. Cannot safely capture infrastructure identifiers."
-fi
-
 step "Capturing infrastructure identifiers from Terraform state"
 
 terraform init -reconfigure \
   -backend-config="bucket=${STATE_BUCKET}" \
-  -backend-config="region=${EXPECTED_REGION}" \
+  -backend-config="region=${AWS_REGION}" \
   >/dev/null
+
+# ── Infrastructure identifiers from Terraform state ───────────────────────────
+# All four reads must succeed before Phase 1 (confirmation gate) and before
+# any destructive AWS command executes. Failure here exits in Phase 0.
+
+_TF_CLUSTER_RAW="$(terraform output -raw cluster_name 2>/dev/null)" || true
+[[ "${_TF_CLUSTER_RAW}" =~ ^[a-z][a-z0-9-]+$ ]] \
+  || fail "Cannot read cluster_name from Terraform state. Ensure this project's infrastructure was provisioned and the state backend is accessible."
+CLUSTER_NAME="${_TF_CLUSTER_RAW}"
+unset _TF_CLUSTER_RAW
+ok "Cluster name: ${CLUSTER_NAME}"
+
+_TF_RDS_EP="$(terraform output -raw rds_endpoint 2>/dev/null)" || true
+_TF_RDS_HOST="${_TF_RDS_EP%%:*}"
+RDS_IDENTIFIER="${_TF_RDS_HOST%%.*}"
+[[ "${RDS_IDENTIFIER}" =~ ^[a-z][a-z0-9-]+$ ]] \
+  || fail "Cannot derive RDS identifier from Terraform state. Ensure RDS was provisioned and the rds_endpoint output is present."
+unset _TF_RDS_EP _TF_RDS_HOST
+ok "RDS identifier: ${RDS_IDENTIFIER}"
+
+_TF_ECR_BE_URL="$(terraform output -raw ecr_repository_url 2>/dev/null)" || true
+ECR_BACKEND_REPO="${_TF_ECR_BE_URL##*/}"
+[[ "${ECR_BACKEND_REPO}" =~ ^[a-z][a-z0-9/_.-]+$ ]] \
+  || fail "Cannot derive backend ECR repository name from Terraform state. Ensure ECR was provisioned and the ecr_repository_url output is present."
+unset _TF_ECR_BE_URL
+
+_TF_ECR_FE_URL="$(terraform output -raw frontend_ecr_repository_url 2>/dev/null)" || true
+ECR_FRONTEND_REPO="${_TF_ECR_FE_URL##*/}"
+[[ "${ECR_FRONTEND_REPO}" =~ ^[a-z][a-z0-9/_.-]+$ ]] \
+  || fail "Cannot derive frontend ECR repository name from Terraform state. Ensure ECR was provisioned and the frontend_ecr_repository_url output is present."
+unset _TF_ECR_FE_URL
+
+ALB_CLUSTER_TAG_KEY="kubernetes.io/cluster/${CLUSTER_NAME}"
+# ─────────────────────────────────────────────────────────────────────────────
 
 # ── VPC ID ────────────────────────────────────────────────────────────────────
 # Validate the terraform output before trusting it: Terraform warning text
@@ -74,8 +117,8 @@ if [[ "${_TF_VPC_RAW}" =~ ^vpc-[0-9a-f]+$ ]]; then
 else
   ok "VPC ID not in Terraform state — querying AWS by name tag"
   _VPC_ID="$(aws ec2 describe-vpcs \
-    --region "${EXPECTED_REGION}" \
-    --filters "Name=tag:Name,Values=akos-tickify-vpc" \
+    --region "${AWS_REGION}" \
+    --filters "Name=tag:Name,Values=${CLUSTER_NAME%-eks}-vpc" \
     --query 'Vpcs[0].VpcId' \
     --output text 2>/dev/null)" || true
   if [[ "${_VPC_ID}" == "None" ]] || [[ -z "${_VPC_ID}" ]]; then
@@ -104,7 +147,7 @@ else
     [[ "${_B}" == "${STATE_BUCKET}" ]] && continue
     _TAG_VAL="$(aws s3api get-bucket-tagging \
       --bucket "${_B}" \
-      --region "${EXPECTED_REGION}" \
+      --region "${AWS_REGION}" \
       --query 'TagSet[?Key==`Project`].Value' \
       --output text 2>/dev/null)" || true
     if [[ "${_TAG_VAL}" == "tickify" ]]; then
@@ -158,7 +201,7 @@ printf "  │  This action cannot be undone.                                  �
 printf "  └─────────────────────────────────────────────────────────────────┘\n"
 printf "\n"
 printf "  Type the cluster name '%s' to confirm: " "${CLUSTER_NAME}"
-read -r _CONFIRM
+read -r _CONFIRM || fail "Confirmation input was interrupted. Aborting."
 
 if [[ "${_CONFIRM}" != "${CLUSTER_NAME}" ]]; then
   printf "\nAborted. No changes were made.\n\n"
@@ -173,11 +216,11 @@ ok "Confirmed"
 step "Phase 2: Configuring kubeconfig"
 # ──────────────────────────────────────────────────────────────────────────────
 
-if aws eks describe-cluster --name "${CLUSTER_NAME}" --region "${EXPECTED_REGION}" \
+if aws eks describe-cluster --name "${CLUSTER_NAME}" --region "${AWS_REGION}" \
    --query 'cluster.status' --output text 2>/dev/null | grep -q "ACTIVE"; then
   aws eks update-kubeconfig \
     --name "${CLUSTER_NAME}" \
-    --region "${EXPECTED_REGION}"
+    --region "${AWS_REGION}"
   ok "kubeconfig configured for ${CLUSTER_NAME}"
   _CLUSTER_REACHABLE=true
 else
@@ -208,7 +251,7 @@ step "Phase 4: Waiting for ALB deletion"
 
 _alb_find_by_vpc_and_tag() {
   aws elbv2 describe-load-balancers \
-    --region "${EXPECTED_REGION}" \
+    --region "${AWS_REGION}" \
     --query "LoadBalancers[?VpcId=='${_VPC_ID}'].LoadBalancerArn" \
     --output text \
   | tr '\t' '\n' \
@@ -216,7 +259,7 @@ _alb_find_by_vpc_and_tag() {
       if [[ -z "${_arn}" ]]; then continue; fi
       _tag_val="$(aws elbv2 describe-tags \
         --resource-arns "${_arn}" \
-        --region "${EXPECTED_REGION}" \
+        --region "${AWS_REGION}" \
         --query "TagDescriptions[0].Tags[?Key=='${ALB_CLUSTER_TAG_KEY}'].Value" \
         --output text 2>/dev/null)"
       if [[ "${_tag_val}" == "${ALB_CLUSTER_TAG_VALUE}" ]]; then
@@ -248,14 +291,14 @@ else
         # Verify VPC — belt-and-suspenders (already filtered above, but re-check before delete)
         _ALB_VPC="$(aws elbv2 describe-load-balancers \
           --load-balancer-arns "${_ALB_ARN}" \
-          --region "${EXPECTED_REGION}" \
+          --region "${AWS_REGION}" \
           --query 'LoadBalancers[0].VpcId' \
           --output text 2>/dev/null)"
 
         # Verify cluster ownership tag
         _ALB_TAG="$(aws elbv2 describe-tags \
           --resource-arns "${_ALB_ARN}" \
-          --region "${EXPECTED_REGION}" \
+          --region "${AWS_REGION}" \
           --query "TagDescriptions[0].Tags[?Key=='${ALB_CLUSTER_TAG_KEY}'].Value" \
           --output text 2>/dev/null)"
 
@@ -268,7 +311,7 @@ else
 
         aws elbv2 delete-load-balancer \
           --load-balancer-arn "${_ALB_ARN}" \
-          --region "${EXPECTED_REGION}"
+          --region "${AWS_REGION}"
         ok "Force-deleted ALB: ${_ALB_ARN}"
       done <<< "${_ALB_ARNS}"
 
@@ -296,7 +339,7 @@ if [[ -z "${_VPC_ID}" ]]; then
   ok "VPC not found — security group cleanup skipped"
 else
   _SG_IDS="$(aws ec2 describe-security-groups \
-    --region "${EXPECTED_REGION}" \
+    --region "${AWS_REGION}" \
     --filters \
       "Name=vpc-id,Values=${_VPC_ID}" \
       "Name=tag-key,Values=${ALB_SG_TAG_KEY}" \
@@ -311,7 +354,7 @@ else
       if [[ -z "${_SG_ID}" ]]; then continue; fi
       aws ec2 delete-security-group \
         --group-id "${_SG_ID}" \
-        --region "${EXPECTED_REGION}" \
+        --region "${AWS_REGION}" \
         && ok "Deleted security group: ${_SG_ID}" \
         || warn "Could not delete security group ${_SG_ID} — may already be deleted or still in use"
     done <<< "${_SG_IDS}"
@@ -325,7 +368,7 @@ step "Phase 6: Deleting application Kubernetes resources"
 # ──────────────────────────────────────────────────────────────────────────────
 
 if [[ "${_CLUSTER_REACHABLE}" == "true" ]]; then
-  for _res in deployment/tickify-backend deployment/tickify-frontend service/tickify-backend service/tickify-frontend; do
+  for _res in deployment/tickify-backend deployment/tickify-frontend service/tickify-service service/tickify-frontend-service; do
     if kubectl get "${_res}" --namespace default &>/dev/null; then
       kubectl delete "${_res}" --namespace default
       ok "Deleted ${_res}"
@@ -364,20 +407,20 @@ step "Phase 8: Emptying S3 uploads bucket (versions and delete markers)"
 
 if [[ -z "${_BUCKET_NAME}" ]]; then
   ok "Uploads bucket was not found — S3 empty phase skipped"
-elif aws s3api head-bucket --bucket "${_BUCKET_NAME}" --region "${EXPECTED_REGION}" 2>/dev/null; then
+elif aws s3api head-bucket --bucket "${_BUCKET_NAME}" --region "${AWS_REGION}" 2>/dev/null; then
   ok "Bucket '${_BUCKET_NAME}' found — emptying all versions and delete markers"
 
   # Delete all object versions
   _VERSIONS="$(aws s3api list-object-versions \
     --bucket "${_BUCKET_NAME}" \
-    --region "${EXPECTED_REGION}" \
+    --region "${AWS_REGION}" \
     --query 'Versions[*].{Key:Key,VersionId:VersionId}' \
     --output json 2>/dev/null)"
 
   if [[ "${_VERSIONS}" != "null" ]] && [[ "${_VERSIONS}" != "[]" ]] && [[ -n "${_VERSIONS}" ]]; then
     aws s3api delete-objects \
       --bucket "${_BUCKET_NAME}" \
-      --region "${EXPECTED_REGION}" \
+      --region "${AWS_REGION}" \
       --delete "{\"Objects\":$(printf '%s' "${_VERSIONS}"),\"Quiet\":true}" \
       >/dev/null
     ok "Object versions deleted"
@@ -388,14 +431,14 @@ elif aws s3api head-bucket --bucket "${_BUCKET_NAME}" --region "${EXPECTED_REGIO
   # Delete all delete markers
   _MARKERS="$(aws s3api list-object-versions \
     --bucket "${_BUCKET_NAME}" \
-    --region "${EXPECTED_REGION}" \
+    --region "${AWS_REGION}" \
     --query 'DeleteMarkers[*].{Key:Key,VersionId:VersionId}' \
     --output json 2>/dev/null)"
 
   if [[ "${_MARKERS}" != "null" ]] && [[ "${_MARKERS}" != "[]" ]] && [[ -n "${_MARKERS}" ]]; then
     aws s3api delete-objects \
       --bucket "${_BUCKET_NAME}" \
-      --region "${EXPECTED_REGION}" \
+      --region "${AWS_REGION}" \
       --delete "{\"Objects\":$(printf '%s' "${_MARKERS}"),\"Quiet\":true}" \
       >/dev/null
     ok "Delete markers removed"
@@ -415,10 +458,10 @@ unset _BUCKET_NAME _VPC_ID
 step "Phase 9: Emptying Tickify ECR repositories"
 # ──────────────────────────────────────────────────────────────────────────────
 
-for _ECR_REPO in "akos-tickify-backend" "akos-tickify-frontend"; do
+for _ECR_REPO in "${ECR_BACKEND_REPO}" "${ECR_FRONTEND_REPO}"; do
   if ! aws ecr describe-repositories \
        --repository-names "${_ECR_REPO}" \
-       --region "${EXPECTED_REGION}" &>/dev/null; then
+       --region "${AWS_REGION}" &>/dev/null; then
     ok "ECR repository '${_ECR_REPO}' — not found, skipping"
     continue
   fi
@@ -426,7 +469,7 @@ for _ECR_REPO in "akos-tickify-backend" "akos-tickify-frontend"; do
   while true; do
     _IMAGE_IDS="$(aws ecr list-images \
       --repository-name "${_ECR_REPO}" \
-      --region "${EXPECTED_REGION}" \
+      --region "${AWS_REGION}" \
       --max-items 100 \
       --query 'imageIds' \
       --output json)"
@@ -437,14 +480,14 @@ for _ECR_REPO in "akos-tickify-backend" "akos-tickify-frontend"; do
 
     aws ecr batch-delete-image \
       --repository-name "${_ECR_REPO}" \
-      --region "${EXPECTED_REGION}" \
+      --region "${AWS_REGION}" \
       --image-ids "${_IMAGE_IDS}" \
       >/dev/null
   done
 
   _REMAINING="$(aws ecr list-images \
     --repository-name "${_ECR_REPO}" \
-    --region "${EXPECTED_REGION}" \
+    --region "${AWS_REGION}" \
     --query 'length(imageIds)' \
     --output text)"
 
@@ -478,7 +521,7 @@ step "Phase 11: Final verification"
 
 _RESIDUAL=false
 
-if aws eks describe-cluster --name "${CLUSTER_NAME}" --region "${EXPECTED_REGION}" \
+if aws eks describe-cluster --name "${CLUSTER_NAME}" --region "${AWS_REGION}" \
    --query 'cluster.status' --output text 2>/dev/null | grep -qv "^$"; then
   warn "EKS cluster '${CLUSTER_NAME}' still present — manual cleanup may be required"
   _RESIDUAL=true
@@ -487,16 +530,16 @@ else
 fi
 
 if aws rds describe-db-instances --db-instance-identifier "${RDS_IDENTIFIER}" \
-   --region "${EXPECTED_REGION}" &>/dev/null; then
+   --region "${AWS_REGION}" &>/dev/null; then
   warn "RDS instance '${RDS_IDENTIFIER}' still present — manual cleanup may be required"
   _RESIDUAL=true
 else
   ok "RDS instance '${RDS_IDENTIFIER}' — gone"
 fi
 
-for _ECR_REPO in "akos-tickify-backend" "akos-tickify-frontend"; do
+for _ECR_REPO in "${ECR_BACKEND_REPO}" "${ECR_FRONTEND_REPO}"; do
   if aws ecr describe-repositories --repository-names "${_ECR_REPO}" \
-     --region "${EXPECTED_REGION}" &>/dev/null; then
+     --region "${AWS_REGION}" &>/dev/null; then
     warn "ECR repository '${_ECR_REPO}' still present — manual cleanup may be required"
     _RESIDUAL=true
   else
@@ -506,7 +549,7 @@ done
 unset _ECR_REPO
 
 # Verify state bucket was not touched
-if aws s3api head-bucket --bucket "${STATE_BUCKET}" --region "${EXPECTED_REGION}" 2>/dev/null; then
+if aws s3api head-bucket --bucket "${STATE_BUCKET}" --region "${AWS_REGION}" 2>/dev/null; then
   ok "Terraform state bucket '${STATE_BUCKET}' — preserved (correct)"
 else
   warn "Terraform state bucket '${STATE_BUCKET}' is not accessible — investigate immediately"

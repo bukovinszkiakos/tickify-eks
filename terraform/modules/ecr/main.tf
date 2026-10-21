@@ -82,9 +82,9 @@ resource "aws_ecr_lifecycle_policy" "this" {
         rulePriority = 1
         description  = "Keep last N images"
         selection = {
-          tagStatus     = "any"
-          countType     = "imageCountMoreThan"
-          countNumber   = var.max_images
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = var.max_images
         }
         action = {
           type = "expire"
@@ -119,9 +119,9 @@ resource "aws_ecr_lifecycle_policy" "frontend" {
         rulePriority = 1
         description  = "Keep last N images"
         selection = {
-          tagStatus     = "any"
-          countType     = "imageCountMoreThan"
-          countNumber   = var.max_images
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = var.max_images
         }
         action = {
           type = "expire"

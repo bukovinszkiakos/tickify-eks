@@ -1,0 +1,71 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# terraform.tfvars.example — Tickify configuration reference
+#
+# Copy this file to terraform.tfvars and fill in your values.
+# terraform.tfvars is excluded by .gitignore and must never be committed.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# ── Required ─────────────────────────────────────────────────────────────────
+
+# AWS region where all infrastructure will be provisioned.
+region = "eu-central-1"
+
+# RDS SQL Server administrator username.
+db_username = "adminuser"
+
+# GitHub repository in "owner/repo" format.
+# This scopes the GitHub Actions OIDC trust policy so that only workflows
+# running in this repository can assume the deployment IAM role.
+# Replace with your own fork's path, e.g. "your-username/tickify-eks".
+github_repository = "your-github-username/your-repository-name"
+
+
+# ── Optional ─────────────────────────────────────────────────────────────────
+
+# Deployment environment label used in S3 bucket naming and resource tags.
+# Defaults to "dev" if not set.
+# environment = "dev"
+
+
+# ── db_password: not stored in this file ─────────────────────────────────────
+#
+# The database password must never be stored in terraform.tfvars or committed
+# to version control. Supply it securely through one of these two methods:
+#
+#   1. Export it in your shell before running scripts/bootstrap.sh:
+#        export TF_VAR_db_password='your-strong-password-here'
+#
+#   2. Leave TF_VAR_db_password unset and scripts/bootstrap.sh will
+#      prompt for it interactively when required.
+
+
+# ── developer_iam_arn: do not set manually ───────────────────────────────────
+#
+# scripts/bootstrap.sh sets this automatically from the current AWS caller
+# identity to grant cluster-admin access. Do not set it here.
+
+
+# ── name: optional, defaults to "akos-tickify" ───────────────────────────────
+#
+# Sets the base name prefix for all AWS resources: EKS cluster, ECR
+# repositories, RDS instance, VPC, IAM roles, and S3 bucket.
+#
+# Character rules: 3–38 characters; lowercase letters, numbers, and hyphens
+# only; must start with a letter; must not end with a hyphen;
+# must not contain consecutive hyphens (--).
+#
+# S3 bucket name length: the complete generated bucket name follows the pattern
+#   <name>-uploads-<environment>-<8hex>
+# and must not exceed 63 characters (AWS S3 hard limit). The fixed portion
+# (-uploads-, two separating hyphens, and the 8-character hex suffix) uses
+# 18 characters, leaving 45 to be shared between name and environment.
+# Examples with the default environment "dev" (3 chars):
+#   name = "my-project"       →  "my-project-uploads-dev-a1b2c3d4"       (31 chars) ✓
+#   name = "employer-tickify" →  "employer-tickify-uploads-dev-a1b2c3d4" (37 chars) ✓
+# If you set environment to "staging" (7 chars), name may be up to 38 chars.
+# If you set environment to "production" (10 chars), name may be up to 35 chars.
+# A Terraform precondition in modules/s3/main.tf enforces this at plan or
+# apply time and will print the actual generated name and length if violated.
+#
+# name = "your-prefix"

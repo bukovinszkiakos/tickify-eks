@@ -5,6 +5,13 @@ resource "random_id" "suffix" {
 resource "aws_s3_bucket" "uploads" {
   bucket = "${var.project_name}-uploads-${var.environment}-${random_id.suffix.hex}"
 
+  lifecycle {
+    precondition {
+      condition     = length("${var.project_name}-uploads-${var.environment}-${random_id.suffix.hex}") <= 63
+      error_message = "Generated S3 bucket name '${var.project_name}-uploads-${var.environment}-${random_id.suffix.hex}' is ${length("${var.project_name}-uploads-${var.environment}-${random_id.suffix.hex}")} characters, exceeding the 63-character S3 limit. The fixed overhead (-uploads-, two separating hyphens, and the 8-character hex suffix) uses 18 characters; the remaining 45 must be shared between name (${length(var.project_name)} chars) and environment (${length(var.environment)} chars). Reduce one or both."
+    }
+  }
+
   tags = {
     Name        = "${var.project_name}-uploads"
     Project     = var.project_name

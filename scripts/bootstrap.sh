@@ -4,8 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TERRAFORM_DIR="$(cd "${SCRIPT_DIR}/../terraform" && pwd)"
 PLAN_FILE="${TERRAFORM_DIR}/tfplan"
-AWS_REGION="eu-central-1"
-GITHUB_REPO="bukovinszkiakos/tickify-eks"
 
 step()      { printf "\n>>> %s\n" "$1"; }
 ok()        { printf "[OK]    %s\n" "$1"; }
@@ -14,6 +12,39 @@ secret_ok() { printf "[OK]    GitHub secret %-38s configured\n" "$1"; }
 
 cleanup() { rm -f "${PLAN_FILE}"; }
 trap cleanup EXIT
+
+# ── Region: read from terraform.tfvars or TF_VAR_region ──────────────────────
+_TF_REGION_RAW=""
+if [[ -f "${TERRAFORM_DIR}/terraform.tfvars" ]]; then
+  _TF_REGION_RAW="$(grep -E '^\s*region\s*=' "${TERRAFORM_DIR}/terraform.tfvars" \
+    | grep -v '^\s*#' \
+    | sed 's/[^"]*"\([^"]*\)".*/\1/' \
+    | head -1)"
+fi
+if [[ -z "${_TF_REGION_RAW}" ]]; then
+  _TF_REGION_RAW="${TF_VAR_region:-}"
+fi
+[[ -z "${_TF_REGION_RAW}" ]] && \
+  fail "Cannot determine AWS region. Set 'region = \"...\"' in terraform.tfvars or export TF_VAR_region before running bootstrap.sh."
+AWS_REGION="${_TF_REGION_RAW}"
+unset _TF_REGION_RAW
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── GitHub repository: read from terraform.tfvars ────────────────────────────
+_GH_REPO_RAW=""
+if [[ -f "${TERRAFORM_DIR}/terraform.tfvars" ]]; then
+  _GH_REPO_RAW="$(grep -E '^\s*github_repository\s*=' "${TERRAFORM_DIR}/terraform.tfvars" \
+    | grep -v '^\s*#' \
+    | sed 's/[^"]*"\([^"]*\)".*/\1/' \
+    | head -1)"
+fi
+[[ -z "${_GH_REPO_RAW}" ]] && \
+  fail "Cannot determine GitHub repository. Set 'github_repository = \"owner/repo\"' in terraform.tfvars."
+[[ "${_GH_REPO_RAW}" =~ ^[^/]+/[^/]+$ ]] || \
+  fail "GitHub repository '${_GH_REPO_RAW}' is not in the expected owner/repo format. Update github_repository in terraform.tfvars."
+GITHUB_REPO="${_GH_REPO_RAW}"
+unset _GH_REPO_RAW
+# ─────────────────────────────────────────────────────────────────────────────
 
 _ROTATE_JWT=false
 for _arg in "$@"; do
@@ -86,9 +117,14 @@ if [[ "${_DB_SECRET_EXISTS}" == "false" ]]; then
     printf "  (lifecycle rule). Entering a different value will NOT change the\n"
     printf "  database password but WILL store an incorrect connection string.\n"
     printf "\n"
-    printf "  Database password: "
-    read -rs TF_VAR_db_password
-    printf "\n"
+    TF_VAR_db_password=""
+    while true; do
+      printf "  Database password: "
+      read -rs TF_VAR_db_password || fail "Password input was interrupted. Aborting."
+      printf "\n"
+      [[ -n "${TF_VAR_db_password}" ]] && break
+      printf "  Password must not be empty. Please try again.\n"
+    done
     export TF_VAR_db_password
   else
     printf "\n"
@@ -103,7 +139,7 @@ fi
 
 if [[ "${_ADMIN_SECRET_EXISTS}" == "false" ]]; then
   printf "  Admin seed password: "
-  read -rs _SEEDING_ADMIN_PASSWORD
+  read -rs _SEEDING_ADMIN_PASSWORD || fail "Password input was interrupted. Aborting."
   printf "\n"
   ok "Admin password ready"
 else
@@ -112,7 +148,7 @@ fi
 
 if [[ "${_SUPERADMIN_SECRET_EXISTS}" == "false" ]]; then
   printf "  Super-admin seed password: "
-  read -rs _SEEDING_SUPERADMIN_PASSWORD
+  read -rs _SEEDING_SUPERADMIN_PASSWORD || fail "Password input was interrupted. Aborting."
   printf "\n"
   ok "Super-admin password ready"
 else
@@ -187,8 +223,55 @@ unset _HEAD_RC _HEAD_HTTP
 
 step "Running: terraform init"
 terraform init \
+  -reconfigure \
   -backend-config="bucket=${STATE_BUCKET}" \
   -backend-config="region=${AWS_REGION}"
+
+# ── Destroy+recreate guard ────────────────────────────────────────────────────
+# The early password-skip above uses DB_CONNECTION_STRING existence as a proxy
+# for "RDS already exists." This breaks if infrastructure is destroyed without
+# also deleting that secret: Terraform would then create a new RDS instance
+# with the placeholder default password. After init the state backend is
+# accessible; check whether the RDS resource is tracked in the state file.
+#
+# Note: a non-empty result from terraform state list confirms only that the
+# resource address is present in the Terraform state file. It does not
+# independently prove that the live RDS instance exists or is healthy.
+#
+# Runs only on the skip path (_DB_SECRET_EXISTS=true, TF_VAR_db_password
+# unset). Normal repeat runs exit immediately when the RDS is found in state.
+if [[ "${_DB_SECRET_EXISTS}" == "true" ]] && [[ -z "${TF_VAR_db_password:-}" ]]; then
+  _STATE_RC=0
+  _STATE_OUT="$(terraform state list module.rds.aws_db_instance.this 2>/dev/null)" \
+    || _STATE_RC=$?
+
+  if [[ "${_STATE_RC}" -ne 0 ]]; then
+    fail "Terraform state could not be read (exit code ${_STATE_RC}). Cannot confirm whether an RDS instance already exists. Resolve the state backend issue and rerun bootstrap.sh."
+  elif [[ -z "${_STATE_OUT}" ]]; then
+    printf "\n"
+    printf "  [WARNING] DB_CONNECTION_STRING secret exists, but the Terraform state\n"
+    printf "  contains no RDS instance. The infrastructure may have been previously\n"
+    printf "  destroyed. A real database password is required to create a new RDS\n"
+    printf "  instance; DB_CONNECTION_STRING will be overwritten with the new\n"
+    printf "  connection string after a successful deployment.\n"
+    printf "\n"
+    TF_VAR_db_password=""
+    while true; do
+      printf "  Database password for new RDS instance: "
+      read -rs TF_VAR_db_password || fail "Password input was interrupted. Aborting."
+      printf "\n"
+      [[ -n "${TF_VAR_db_password}" ]] && break
+      printf "  Password must not be empty. Please try again.\n"
+    done
+    export TF_VAR_db_password
+    _DB_SECRET_EXISTS=false
+    ok "Database password collected for new RDS instance"
+  else
+    ok "RDS instance confirmed in Terraform state — password not required"
+  fi
+  unset _STATE_RC _STATE_OUT
+fi
+# ─────────────────────────────────────────────────────────────────────────────
 
 step "Running: terraform validate"
 terraform validate
@@ -204,7 +287,7 @@ printf "  Applying will create real AWS infrastructure and will\n"
 printf "  incur costs. This action cannot be undone automatically.\n"
 printf "\n"
 printf "  Type 'yes' to apply, anything else to abort: "
-read -r CONFIRM
+read -r CONFIRM || fail "Confirmation input was interrupted. Aborting."
 
 if [[ "${CONFIRM}" != "yes" ]]; then
   printf "\nAborted. No changes were made to your AWS account.\n\n"
@@ -227,6 +310,8 @@ _BUCKET_NAME="$(terraform output -raw bucket_name)"
 _RDS_ENDPOINT="$(terraform output -raw rds_endpoint)"
 _DB_USERNAME="$(terraform output -raw db_username)"
 _VPC_ID="$(terraform output -raw vpc_id)"
+_ECR_BACKEND_URL="$(terraform output -raw ecr_repository_url)"
+_ECR_FRONTEND_URL="$(terraform output -raw frontend_ecr_repository_url)"
 
 ok "Infrastructure outputs collected"
 
@@ -292,8 +377,20 @@ secret_ok "AWS_BUCKET_NAME"
 unset _BUCKET_NAME
 
 if [[ "${_DB_SECRET_EXISTS}" == "false" ]]; then
+  [[ -z "${_RDS_ENDPOINT:-}" ]]      && fail "Cannot update DB_CONNECTION_STRING: Terraform output 'rds_endpoint' is empty. Resolve and rerun bootstrap.sh."
+  [[ -z "${_DB_USERNAME:-}" ]]       && fail "Cannot update DB_CONNECTION_STRING: Terraform output 'db_username' is empty. Resolve and rerun bootstrap.sh."
+  [[ -z "${TF_VAR_db_password:-}" ]] && fail "Cannot update DB_CONNECTION_STRING: database password is not set. Rerun bootstrap.sh and enter a non-empty password when prompted."
   _RDS_HOST="${_RDS_ENDPOINT%%:*}"
   _RDS_PORT="${_RDS_ENDPOINT##*:}"
+  [[ -z "${_RDS_HOST}" ]]                    && fail "Cannot update DB_CONNECTION_STRING: endpoint host is empty. Check Terraform output 'rds_endpoint'."
+  [[ "${_RDS_HOST}" == "${_RDS_ENDPOINT}" ]] && fail "Cannot update DB_CONNECTION_STRING: endpoint has no host:port separator. Check Terraform output 'rds_endpoint'."
+  [[ -z "${_RDS_PORT}" ]]                    && fail "Cannot update DB_CONNECTION_STRING: endpoint port is empty. Check Terraform output 'rds_endpoint'."
+  [[ "${_RDS_PORT}" =~ ^[0-9]+$ ]]           || fail "Cannot update DB_CONNECTION_STRING: endpoint port contains non-decimal characters. Check Terraform output 'rds_endpoint'."
+  [[ "${_RDS_PORT}" =~ ^0 ]]                 && fail "Cannot update DB_CONNECTION_STRING: endpoint port must not start with zero. Check Terraform output 'rds_endpoint'."
+  [[ ${#_RDS_PORT} -gt 5 ]]                  && fail "Cannot update DB_CONNECTION_STRING: endpoint port value is too long to be a valid port number. Check Terraform output 'rds_endpoint'."
+  if ! (( _RDS_PORT >= 1 && _RDS_PORT <= 65535 )); then
+    fail "Cannot update DB_CONNECTION_STRING: endpoint port is outside the valid range 1-65535. Check Terraform output 'rds_endpoint'."
+  fi
   _CONN_STR="Server=${_RDS_HOST},${_RDS_PORT};Database=TickifyDb;User Id=${_DB_USERNAME};Password=${TF_VAR_db_password};TrustServerCertificate=True;"
   printf '%s' "${_CONN_STR}" | gh secret set DB_CONNECTION_STRING --repo "${GITHUB_REPO}"
   secret_ok "DB_CONNECTION_STRING"
@@ -337,6 +434,32 @@ fi
 unset _SUPERADMIN_SECRET_EXISTS
 
 
+step "Configuring GitHub repository variables"
+
+_ECR_BACKEND_REPO="${_ECR_BACKEND_URL##*/}"
+_ECR_FRONTEND_REPO="${_ECR_FRONTEND_URL##*/}"
+unset _ECR_BACKEND_URL _ECR_FRONTEND_URL
+
+[[ -z "${AWS_REGION}" ]]         && fail "Cannot set GitHub Variables: AWS_REGION is empty. Set 'region = \"...\"' in terraform/terraform.tfvars or export TF_VAR_region before running bootstrap.sh."
+[[ -z "${_ECR_BACKEND_REPO}" ]]  && fail "Cannot set GitHub Variables: ECR backend repository name is empty. Check Terraform output 'ecr_repository_url'."
+[[ -z "${_ECR_FRONTEND_REPO}" ]] && fail "Cannot set GitHub Variables: ECR frontend repository name is empty. Check Terraform output 'frontend_ecr_repository_url'."
+[[ -z "${_CLUSTER_NAME}" ]]      && fail "Cannot set GitHub Variables: cluster name is empty. Check Terraform output 'cluster_name'."
+
+printf '%s' "${AWS_REGION}"         | gh variable set AWS_REGION             --repo "${GITHUB_REPO}"
+ok "GitHub variable AWS_REGION configured"
+
+printf '%s' "${_ECR_BACKEND_REPO}"  | gh variable set ECR_BACKEND_REPOSITORY --repo "${GITHUB_REPO}"
+ok "GitHub variable ECR_BACKEND_REPOSITORY configured"
+
+printf '%s' "${_ECR_FRONTEND_REPO}" | gh variable set ECR_FRONTEND_REPOSITORY --repo "${GITHUB_REPO}"
+ok "GitHub variable ECR_FRONTEND_REPOSITORY configured"
+
+printf '%s' "${_CLUSTER_NAME}"      | gh variable set EKS_CLUSTER_NAME        --repo "${GITHUB_REPO}"
+ok "GitHub variable EKS_CLUSTER_NAME configured"
+
+unset _ECR_BACKEND_REPO _ECR_FRONTEND_REPO
+
+
 step "Validating cluster"
 
 kubectl get nodes
@@ -361,10 +484,16 @@ printf "    JWT_SIGNING_KEY\n"
 printf "    SEEDING_ADMIN_PASSWORD\n"
 printf "    SEEDING_SUPERADMIN_PASSWORD\n"
 printf "\n"
+printf "  GitHub variables configured (4):\n"
+printf "    AWS_REGION\n"
+printf "    ECR_BACKEND_REPOSITORY\n"
+printf "    ECR_FRONTEND_REPOSITORY\n"
+printf "    EKS_CLUSTER_NAME\n"
+printf "\n"
 printf "  Next step:\n"
 printf "\n"
 printf "    git push origin master\n"
 printf "\n"
 printf "  GitHub Actions will build, scan, and deploy\n"
-printf "  the application automatically.\n"
+printf "  the application. Verify the run in the Actions tab.\n"
 printf "========================================================\n"

@@ -14,7 +14,18 @@ variable "db_password" {
 
 
 variable "name" {
-  default = "akos-tickify"
+  default     = "akos-tickify"
+  description = "Base name prefix for all AWS resources. Must be lowercase letters, numbers, and hyphens only; start with a letter; no trailing hyphen; no consecutive hyphens. The S3 bucket name constraint is enforced precisely by a precondition in modules/s3/main.tf."
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{1,36}[a-z0-9]$", var.name))
+    error_message = "name must be 3–38 characters, start with a lowercase letter, contain only lowercase letters, numbers, and hyphens, and not end with a hyphen. The exact S3 bucket name length limit also depends on the environment value; a precondition in modules/s3/main.tf enforces the combined constraint."
+  }
+
+  validation {
+    condition     = !strcontains(var.name, "--")
+    error_message = "name must not contain consecutive hyphens (--); S3 bucket names prohibit them."
+  }
 }
 
 variable "environment" {

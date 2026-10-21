@@ -1,7 +1,7 @@
 module "ecr" {
   source = "./modules/ecr"
 
-  name        = "akos-tickify"
+  name        = var.name
   on_premise  = false
   owner       = "akos"
   environment = var.environment
@@ -16,7 +16,7 @@ data "aws_availability_zones" "available" {}
 module "network" {
   source = "./modules/network"
 
-  name               = "akos-tickify"
+  name               = var.name
   vpc_cidr           = "10.0.0.0/16"
   availability_zones = data.aws_availability_zones.available.names
 
@@ -27,7 +27,7 @@ module "network" {
 module "eks" {
   source = "./modules/eks"
 
-  name            = "akos-tickify"
+  name            = var.name
   subnet_ids      = module.network.subnet_ids
   node_subnet_ids = module.network.private_subnet_ids
 
@@ -38,7 +38,7 @@ module "eks" {
 module "rds" {
   source = "./modules/rds"
 
-  name        = "akos-tickify"
+  name        = var.name
   db_username = var.db_username
   db_password = var.db_password
 
