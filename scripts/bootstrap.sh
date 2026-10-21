@@ -256,8 +256,11 @@ if [[ "${_DB_SECRET_EXISTS}" == "true" ]] && [[ -z "${TF_VAR_db_password:-}" ]];
   if [[ "${_S3_STATE_RC}" -ne 0 ]]; then
     _STATE_RC="${_S3_STATE_RC}"
   elif [[ "${_S3_STATE_COUNT}" == "terraform/tickify.tfstate" ]]; then
-    _STATE_OUT="$(terraform state list module.rds.aws_db_instance.this 2>/dev/null)" \
-      || _STATE_RC=$?
+    _TF_STATE_ALL="$(terraform state list 2>/dev/null)" || _STATE_RC=$?
+    if [[ "${_STATE_RC}" -eq 0 ]]; then
+      _STATE_OUT="$(printf '%s\n' "${_TF_STATE_ALL}" | grep -F 'module.rds.aws_db_instance.this' || true)"
+    fi
+    unset _TF_STATE_ALL
   elif [[ "${_S3_STATE_COUNT}" != "None" ]]; then
     _STATE_RC=1
   fi
