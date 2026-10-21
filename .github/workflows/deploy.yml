@@ -163,7 +163,7 @@ jobs:
       - name: Wait for backend rollout
         id: rollout-backend
         run: |
-          kubectl rollout status deployment/tickify-backend --timeout=120s
+          kubectl rollout status deployment/tickify-backend --timeout=600s
 
       - name: Deploy frontend
         run: |
@@ -177,11 +177,25 @@ jobs:
       - name: Rollback backend on failure
         if: failure() && steps.rollout-backend.outcome == 'failure'
         run: |
+          CURRENT_REVISION=$(kubectl get deployment tickify-backend \
+            -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}' \
+            2>/dev/null || true)
+          if [[ -z "${CURRENT_REVISION}" ]] || [[ "${CURRENT_REVISION}" -lt 2 ]]; then
+            echo "::error::No previous revision to roll back to. Manual cleanup of the deployment is required."
+            exit 1
+          fi
           kubectl rollout undo deployment/tickify-backend
-          kubectl rollout status deployment/tickify-backend --timeout=120s
+          kubectl rollout status deployment/tickify-backend --timeout=300s
 
       - name: Rollback frontend on failure
         if: failure() && steps.rollout-frontend.outcome == 'failure'
         run: |
+          CURRENT_REVISION=$(kubectl get deployment tickify-frontend \
+            -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}' \
+            2>/dev/null || true)
+          if [[ -z "${CURRENT_REVISION}" ]] || [[ "${CURRENT_REVISION}" -lt 2 ]]; then
+            echo "::error::No previous revision to roll back to. Manual cleanup of the deployment is required."
+            exit 1
+          fi
           kubectl rollout undo deployment/tickify-frontend
           kubectl rollout status deployment/tickify-frontend --timeout=120s
