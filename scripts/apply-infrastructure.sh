@@ -96,8 +96,9 @@ _S3_STATE_RC=0
 _S3_STATE_COUNT="$(aws s3api list-objects-v2 \
   --bucket "${STATE_BUCKET}" \
   --prefix "terraform/tickify.tfstate" \
-  --max-items 1 \
-  --query 'length(Contents[?Key==`terraform/tickify.tfstate`])' \
+  --max-keys 1 \
+  --no-paginate \
+  --query 'Contents[0].Key' \
   --output text \
   --region "${AWS_REGION}" 2>/dev/null)" || _S3_STATE_RC=$?
 
@@ -105,10 +106,10 @@ _RDS_STATE_RC=0
 _RDS_STATE_OUT=""
 if [[ "${_S3_STATE_RC}" -ne 0 ]]; then
   _RDS_STATE_RC="${_S3_STATE_RC}"
-elif [[ "${_S3_STATE_COUNT}" == "1" ]]; then
+elif [[ "${_S3_STATE_COUNT}" == "terraform/tickify.tfstate" ]]; then
   _RDS_STATE_OUT="$(terraform state list module.rds.aws_db_instance.this 2>/dev/null)" \
     || _RDS_STATE_RC=$?
-elif [[ "${_S3_STATE_COUNT}" != "0" ]] && [[ "${_S3_STATE_COUNT}" != "None" ]]; then
+elif [[ "${_S3_STATE_COUNT}" != "None" ]]; then
   _RDS_STATE_RC=1
 fi
 unset _S3_STATE_RC _S3_STATE_COUNT

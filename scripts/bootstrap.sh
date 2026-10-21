@@ -245,8 +245,9 @@ if [[ "${_DB_SECRET_EXISTS}" == "true" ]] && [[ -z "${TF_VAR_db_password:-}" ]];
   _S3_STATE_COUNT="$(aws s3api list-objects-v2 \
     --bucket "${STATE_BUCKET}" \
     --prefix "terraform/tickify.tfstate" \
-    --max-items 1 \
-    --query 'length(Contents[?Key==`terraform/tickify.tfstate`])' \
+    --max-keys 1 \
+    --no-paginate \
+    --query 'Contents[0].Key' \
     --output text \
     --region "${AWS_REGION}" 2>/dev/null)" || _S3_STATE_RC=$?
 
@@ -254,10 +255,10 @@ if [[ "${_DB_SECRET_EXISTS}" == "true" ]] && [[ -z "${TF_VAR_db_password:-}" ]];
   _STATE_OUT=""
   if [[ "${_S3_STATE_RC}" -ne 0 ]]; then
     _STATE_RC="${_S3_STATE_RC}"
-  elif [[ "${_S3_STATE_COUNT}" == "1" ]]; then
+  elif [[ "${_S3_STATE_COUNT}" == "terraform/tickify.tfstate" ]]; then
     _STATE_OUT="$(terraform state list module.rds.aws_db_instance.this 2>/dev/null)" \
       || _STATE_RC=$?
-  elif [[ "${_S3_STATE_COUNT}" != "0" ]] && [[ "${_S3_STATE_COUNT}" != "None" ]]; then
+  elif [[ "${_S3_STATE_COUNT}" != "None" ]]; then
     _STATE_RC=1
   fi
   unset _S3_STATE_RC _S3_STATE_COUNT
