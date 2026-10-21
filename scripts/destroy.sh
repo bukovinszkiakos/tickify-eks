@@ -73,35 +73,67 @@ terraform init -reconfigure \
   -backend-config="region=${AWS_REGION}" \
   >/dev/null
 
-# ── Infrastructure identifiers from Terraform state ───────────────────────────
-# All four reads must succeed before Phase 1 (confirmation gate) and before
-# any destructive AWS command executes. Failure here exits in Phase 0.
+# ── Infrastructure identifiers ───────────────────────────────────────────────
+# All four identifiers must be known before Phase 1 (confirmation gate) and
+# before any destructive AWS command executes. When a Terraform output is absent
+# (e.g. partial state loss), each identifier falls back to the deterministic
+# formula used by its Terraform module.
 
 _TF_CLUSTER_RAW="$(terraform output -raw cluster_name 2>/dev/null)" || true
-[[ "${_TF_CLUSTER_RAW}" =~ ^[a-z][a-z0-9-]+$ ]] \
-  || fail "Cannot read cluster_name from Terraform state. Ensure this project's infrastructure was provisioned and the state backend is accessible."
-CLUSTER_NAME="${_TF_CLUSTER_RAW}"
+if [[ "${_TF_CLUSTER_RAW}" =~ ^[a-z][a-z0-9-]+$ ]]; then
+  CLUSTER_NAME="${_TF_CLUSTER_RAW}"
+  ok "Cluster name: ${CLUSTER_NAME}"
+else
+  # Output missing — infrastructure may be partially destroyed or state cleared.
+  # Derive from the same formula the EKS module uses: "${var.name}-eks".
+  _TF_NAME_RAW=""
+  if [[ -f "${TERRAFORM_DIR}/terraform.tfvars" ]]; then
+    _TF_NAME_RAW="$(grep -E '^\s*name\s*=' "${TERRAFORM_DIR}/terraform.tfvars" \
+      | grep -v '^\s*#' \
+      | sed 's/[^"]*"\([^"]*\)".*/\1/' \
+      | head -1)"
+  fi
+  CLUSTER_NAME="${_TF_NAME_RAW:-akos-tickify}-eks"
+  unset _TF_NAME_RAW
+  if [[ ! "${CLUSTER_NAME}" =~ ^[a-z][a-z0-9-]+$ ]]; then
+    fail "Cannot determine cluster name: neither Terraform state nor terraform.tfvars provides a valid 'name'. Set 'name = ...' in terraform.tfvars and retry."
+  fi
+  warn "cluster_name not in Terraform state — using derived value: ${CLUSTER_NAME}"
+fi
 unset _TF_CLUSTER_RAW
-ok "Cluster name: ${CLUSTER_NAME}"
 
 _TF_RDS_EP="$(terraform output -raw rds_endpoint 2>/dev/null)" || true
 _TF_RDS_HOST="${_TF_RDS_EP%%:*}"
 RDS_IDENTIFIER="${_TF_RDS_HOST%%.*}"
-[[ "${RDS_IDENTIFIER}" =~ ^[a-z][a-z0-9-]+$ ]] \
-  || fail "Cannot derive RDS identifier from Terraform state. Ensure RDS was provisioned and the rds_endpoint output is present."
+if [[ "${RDS_IDENTIFIER}" =~ ^[a-z][a-z0-9-]+$ ]]; then
+  ok "RDS identifier: ${RDS_IDENTIFIER}"
+else
+  # modules/rds/main.tf: identifier = "${var.name}-db"
+  RDS_IDENTIFIER="${CLUSTER_NAME%-eks}-db"
+  warn "rds_endpoint not in Terraform state — using derived identifier: ${RDS_IDENTIFIER}"
+fi
 unset _TF_RDS_EP _TF_RDS_HOST
-ok "RDS identifier: ${RDS_IDENTIFIER}"
 
 _TF_ECR_BE_URL="$(terraform output -raw ecr_repository_url 2>/dev/null)" || true
 ECR_BACKEND_REPO="${_TF_ECR_BE_URL##*/}"
-[[ "${ECR_BACKEND_REPO}" =~ ^[a-z][a-z0-9/_.-]+$ ]] \
-  || fail "Cannot derive backend ECR repository name from Terraform state. Ensure ECR was provisioned and the ecr_repository_url output is present."
+if [[ "${ECR_BACKEND_REPO}" =~ ^[a-z][a-z0-9/_.-]+$ ]]; then
+  ok "Backend ECR repository: ${ECR_BACKEND_REPO}"
+else
+  # modules/ecr/main.tf: name = "${var.name}-backend"
+  ECR_BACKEND_REPO="${CLUSTER_NAME%-eks}-backend"
+  warn "ecr_repository_url not in Terraform state — using derived name: ${ECR_BACKEND_REPO}"
+fi
 unset _TF_ECR_BE_URL
 
 _TF_ECR_FE_URL="$(terraform output -raw frontend_ecr_repository_url 2>/dev/null)" || true
 ECR_FRONTEND_REPO="${_TF_ECR_FE_URL##*/}"
-[[ "${ECR_FRONTEND_REPO}" =~ ^[a-z][a-z0-9/_.-]+$ ]] \
-  || fail "Cannot derive frontend ECR repository name from Terraform state. Ensure ECR was provisioned and the frontend_ecr_repository_url output is present."
+if [[ "${ECR_FRONTEND_REPO}" =~ ^[a-z][a-z0-9/_.-]+$ ]]; then
+  ok "Frontend ECR repository: ${ECR_FRONTEND_REPO}"
+else
+  # modules/ecr/main.tf: name = "${var.name}-frontend"
+  ECR_FRONTEND_REPO="${CLUSTER_NAME%-eks}-frontend"
+  warn "frontend_ecr_repository_url not in Terraform state — using derived name: ${ECR_FRONTEND_REPO}"
+fi
 unset _TF_ECR_FE_URL
 
 ALB_CLUSTER_TAG_KEY="kubernetes.io/cluster/${CLUSTER_NAME}"
@@ -332,12 +364,13 @@ fi
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-step "Phase 5: Deleting ALB Controller security groups"
+step "Phase 5: Deleting out-of-band security groups"
 # ──────────────────────────────────────────────────────────────────────────────
 
 if [[ -z "${_VPC_ID}" ]]; then
   ok "VPC not found — security group cleanup skipped"
 else
+  # ── ALB Controller security groups (tagged elbv2.k8s.aws/cluster) ────────────
   _SG_IDS="$(aws ec2 describe-security-groups \
     --region "${AWS_REGION}" \
     --filters \
@@ -355,11 +388,40 @@ else
       aws ec2 delete-security-group \
         --group-id "${_SG_ID}" \
         --region "${AWS_REGION}" \
-        && ok "Deleted security group: ${_SG_ID}" \
+        && ok "Deleted ALB Controller security group: ${_SG_ID}" \
         || warn "Could not delete security group ${_SG_ID} — may already be deleted or still in use"
     done <<< "${_SG_IDS}"
   fi
   unset _SG_IDS _SG_ID
+
+  # ── EKS-managed cluster security group (eks-cluster-sg-{cluster}-{random}) ───
+  # EKS creates this SG automatically when the cluster is provisioned; it is NOT
+  # tracked in Terraform state. EKS normally deletes it when the cluster is
+  # destroyed, but if the cluster was deleted outside Terraform the SG may remain
+  # as an orphan. A lingering cluster SG causes a VPC DependencyViolation that
+  # prevents terraform destroy from completing.
+  _EKS_SG_IDS="$(aws ec2 describe-security-groups \
+    --region "${AWS_REGION}" \
+    --filters \
+      "Name=vpc-id,Values=${_VPC_ID}" \
+      "Name=group-name,Values=eks-cluster-sg-${CLUSTER_NAME}-*" \
+    --query 'SecurityGroups[*].GroupId' \
+    --output text \
+    | tr '\t' '\n')"
+
+  if [[ -z "${_EKS_SG_IDS}" ]]; then
+    ok "No EKS cluster security group found in VPC ${_VPC_ID} — already cleaned up"
+  else
+    while IFS= read -r _SG_ID; do
+      if [[ -z "${_SG_ID}" ]]; then continue; fi
+      aws ec2 delete-security-group \
+        --group-id "${_SG_ID}" \
+        --region "${AWS_REGION}" \
+        && ok "Deleted EKS cluster security group: ${_SG_ID}" \
+        || warn "Could not delete EKS cluster security group ${_SG_ID} — it may still have dependencies. terraform destroy may fail on VPC deletion if this is not resolved."
+    done <<< "${_EKS_SG_IDS}"
+  fi
+  unset _EKS_SG_IDS _SG_ID
 fi
 
 
