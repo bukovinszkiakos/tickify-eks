@@ -81,6 +81,7 @@ namespace Tickify.Controllers
                 c.Comment,
                 c.CreatedAt,
                 ImageUrl = await _fileStorageService.GetFileUrlAsync(c.ImageUrl ?? ""),
+                OldImageUrl = await _fileStorageService.GetFileUrlAsync(c.OldImageKey ?? ""),
                 Commenter = !string.IsNullOrWhiteSpace(c.CommenterName) ? c.CommenterName : "Unknown"
             }));
 

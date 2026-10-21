@@ -18,12 +18,13 @@ public class TicketServiceImageTests
         Mock<ITicketRepository> repoMock,
         Mock<IFileStorageService> fsMock,
         Mock<ITicketCommentService>? commentMock = null,
-        Mock<UserManager<IdentityUser>>? userManagerMock = null)
+        Mock<UserManager<IdentityUser>>? userManagerMock = null,
+        ApplicationDbContext? existingDb = null)
     {
-        var dbOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .Options;
-        var dbContext = new ApplicationDbContext(dbOptions);
+        var dbContext = existingDb ?? new ApplicationDbContext(
+            new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options);
 
         if (userManagerMock == null)
         {
@@ -37,7 +38,7 @@ public class TicketServiceImageTests
             commentMock = new Mock<ITicketCommentService>();
             commentMock.Setup(c => c.AddCommentAsync(
                 It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<string>(), It.IsAny<string?>()))
+                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
                 .Returns(Task.CompletedTask);
         }
 
@@ -167,8 +168,10 @@ public class TicketServiceImageTests
     // ---- UpdateTicketAsync ----
 
     [Fact]
-    public async Task UpdateTicketAsync_ImageReplaced_DeletesOldS3KeyAfterDbCommit()
+    public async Task UpdateTicketAsync_ImageReplaced_PreservesOldS3KeyNotDeleted()
     {
+        // Old image must NOT be deleted from S3 — it is preserved for history.
+        // The old S3 key must be passed to the comment service as oldImageKey instead.
         var repoMock = new Mock<ITicketRepository>();
         var fsMock = new Mock<IFileStorageService>();
         var commentMock = new Mock<ITicketCommentService>();
@@ -183,12 +186,9 @@ public class TicketServiceImageTests
             .ReturnsAsync("new-key.jpg");
         fsMock.Setup(s => s.GetFileUrlAsync(It.IsAny<string>(), It.IsAny<int>()))
             .ReturnsAsync("https://presigned");
-        fsMock.Setup(s => s.DeleteFileAsync(It.IsAny<string>()))
-            .Callback(() => callOrder.Add("delete"))
-            .Returns(Task.CompletedTask);
         commentMock.Setup(c => c.AddCommentAsync(
             It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(),
-            It.IsAny<string>(), It.IsAny<string?>()))
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .Returns(Task.CompletedTask);
 
         var umMock = CreateUserManagerMock("user1", new IdentityUser { UserName = "user1" });
@@ -196,8 +196,14 @@ public class TicketServiceImageTests
         var dto = new UpdateTicketDto { Title = "T", Description = "D", Status = "Open", Priority = "Low" };
         await svc.UpdateTicketAsync(1, dto, "user1", false, CreateFormFile(), "https", "localhost");
 
-        Assert.Equal(new[] { "save", "delete" }, callOrder);
-        fsMock.Verify(s => s.DeleteFileAsync("old-key.jpg"), Times.Once);
+        // DB save happens; no S3 delete ever fires for old image
+        Assert.Equal(new[] { "save" }, callOrder);
+        fsMock.Verify(s => s.DeleteFileAsync(It.IsAny<string>()), Times.Never);
+
+        // Old key forwarded to comment service for history
+        commentMock.Verify(c => c.AddCommentAsync(
+            1, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+            "new-key.jpg", "old-key.jpg"), Times.Once);
     }
 
     [Fact]
@@ -216,7 +222,7 @@ public class TicketServiceImageTests
             .ReturnsAsync("https://presigned");
         commentMock.Setup(c => c.AddCommentAsync(
             It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(),
-            It.IsAny<string>(), It.IsAny<string?>()))
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .Returns(Task.CompletedTask);
 
         var umMock = CreateUserManagerMock("user1", new IdentityUser { UserName = "user1" });
@@ -240,7 +246,7 @@ public class TicketServiceImageTests
         repoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
         commentMock.Setup(c => c.AddCommentAsync(
             It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(),
-            It.IsAny<string>(), It.IsAny<string?>()))
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .Returns(Task.CompletedTask);
 
         var umMock = CreateUserManagerMock("user1", new IdentityUser { UserName = "user1" });
@@ -253,8 +259,9 @@ public class TicketServiceImageTests
     }
 
     [Fact]
-    public async Task UpdateTicketAsync_S3DeleteFails_DoesNotPropagate()
+    public async Task UpdateTicketAsync_ImageReplaced_NeverDeletesAnyS3Object()
     {
+        // UpdateTicketAsync never calls DeleteFileAsync — old image is preserved in S3 for history.
         var repoMock = new Mock<ITicketRepository>();
         var fsMock = new Mock<IFileStorageService>();
         var commentMock = new Mock<ITicketCommentService>();
@@ -266,10 +273,9 @@ public class TicketServiceImageTests
             .ReturnsAsync("new-key.jpg");
         fsMock.Setup(s => s.GetFileUrlAsync(It.IsAny<string>(), It.IsAny<int>()))
             .ReturnsAsync("https://presigned");
-        fsMock.Setup(s => s.DeleteFileAsync(It.IsAny<string>())).ThrowsAsync(new Exception("S3 error"));
         commentMock.Setup(c => c.AddCommentAsync(
             It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(),
-            It.IsAny<string>(), It.IsAny<string?>()))
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .Returns(Task.CompletedTask);
 
         var umMock = CreateUserManagerMock("user1", new IdentityUser { UserName = "user1" });
@@ -279,6 +285,7 @@ public class TicketServiceImageTests
             svc.UpdateTicketAsync(1, dto, "user1", false, CreateFormFile(), "https", "localhost"));
 
         Assert.Null(ex);
+        fsMock.Verify(s => s.DeleteFileAsync(It.IsAny<string>()), Times.Never);
         repoMock.Verify(r => r.SaveChangesAsync(), Times.Once);
     }
 
@@ -298,7 +305,7 @@ public class TicketServiceImageTests
             .ReturnsAsync("https://presigned");
         commentMock.Setup(c => c.AddCommentAsync(
             It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(),
-            It.IsAny<string>(), It.IsAny<string?>()))
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .Returns(Task.CompletedTask);
 
         var umMock = CreateUserManagerMock("user1", new IdentityUser { UserName = "user1" });
@@ -405,5 +412,51 @@ public class TicketServiceImageTests
 
         fsMock.Verify(s => s.DeleteFileAsync(It.IsAny<string>()), Times.Never);
         repoMock.Verify(r => r.SaveChangesAsync(), Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteTicketAsync_WithCommentImages_DeletesAllS3Keys()
+    {
+        // When a ticket is deleted, all S3 objects referenced by comment history
+        // (both ImageUrl and OldImageKey) must be deleted. Shared keys must not be double-deleted.
+        var repoMock = new Mock<ITicketRepository>();
+        var fsMock = new Mock<IFileStorageService>();
+        var deleted = new List<string>();
+
+        var dbOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var db = new ApplicationDbContext(dbOptions);
+
+        // One comment with a user-attached image; one image-change comment with old + new keys;
+        // one image-change comment where oldImageKey duplicates the ticket's own imageKey.
+        db.TicketComments.AddRange(
+            new TicketComment { Id = 10, TicketId = 5, Comment = "hi", CommentedBy = "u", CommenterName = "u",
+                ImageUrl = "comment-img.jpg", OldImageKey = null },
+            new TicketComment { Id = 11, TicketId = 5, Comment = "🔄 Ticket updated:\n🖼️ Image updated.", CommentedBy = "u", CommenterName = "u",
+                ImageUrl = "new-img.jpg", OldImageKey = "old-img.jpg" },
+            new TicketComment { Id = 12, TicketId = 5, Comment = "🔄 Ticket updated:\n🖼️ Image updated.", CommentedBy = "u", CommenterName = "u",
+                ImageUrl = "final-img.jpg", OldImageKey = "new-img.jpg" }   // "new-img.jpg" appears twice — must be deleted once
+        );
+        await db.SaveChangesAsync();
+
+        var ticket = new Ticket { Id = 5, Title = "T", Description = "D", CreatedBy = "user1", ImageUrl = "ticket.jpg" };
+        repoMock.Setup(r => r.GetTicketByIdAsync(5)).ReturnsAsync(ticket);
+        repoMock.Setup(r => r.SaveChangesAsync()).Returns(Task.CompletedTask);
+        fsMock.Setup(s => s.DeleteFileAsync(It.IsAny<string>()))
+            .Callback<string>(k => deleted.Add(k))
+            .Returns(Task.CompletedTask);
+
+        var umMock = CreateUserManagerMock("user1");
+        var svc = BuildService(repoMock, fsMock, null, umMock, db);
+        await svc.DeleteTicketAsync(5, "user1", false);
+
+        // Ticket image + 4 distinct comment keys (comment-img, new-img, old-img, final-img)
+        Assert.Equal(5, deleted.Count);
+        Assert.Contains("ticket.jpg", deleted);
+        Assert.Contains("comment-img.jpg", deleted);
+        Assert.Contains("old-img.jpg", deleted);
+        Assert.Contains("new-img.jpg", deleted);
+        Assert.Contains("final-img.jpg", deleted);
     }
 }

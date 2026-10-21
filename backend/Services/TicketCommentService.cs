@@ -29,7 +29,7 @@ namespace Tickify.Services
             return await _commentRepository.GetCommentsByTicketIdAsync(ticketId);
         }
 
-        public async Task AddCommentAsync(int ticketId, string comment, string userId, string username, string? imageUrl)
+        public async Task AddCommentAsync(int ticketId, string comment, string userId, string username, string? imageUrl, string? oldImageKey = null)
         {
             var ticket = await _ticketRepository.GetTicketByIdAsync(ticketId);
             if (ticket == null)
@@ -42,6 +42,7 @@ namespace Tickify.Services
                 CommentedBy = userId,
                 CreatedAt = DateTime.UtcNow,
                 ImageUrl = imageUrl,
+                OldImageKey = oldImageKey,
                 CommenterName = username
             };
 

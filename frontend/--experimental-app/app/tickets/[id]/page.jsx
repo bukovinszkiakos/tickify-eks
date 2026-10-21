@@ -23,10 +23,7 @@ export default function TicketDetailPage() {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [newImage, setNewImage] = useState(null);
-  const [previewChanges, setPreviewChanges] = useState(null);
-  const [oldImageUrl, setOldImageUrl] = useState(null);
-  const [newImageUrl, setNewImageUrl] = useState(null);
-  const [textChanges, setTextChanges] = useState([]);
+  const [selectedUpdateComment, setSelectedUpdateComment] = useState(null);
   const commentsTopRef = useRef(null);
 
   useEffect(() => {
@@ -175,21 +172,8 @@ export default function TicketDetailPage() {
     }
   };
 
-  const handleSeeChanges = (text) => {
-    setPreviewChanges(text);
-    const lines = text
-      .split("\n")
-      .filter((line) =>
-        ["Title:", "Description:", "Priority:", "Assigned To:"].some((prefix) =>
-          line.startsWith(prefix)
-        )
-      );
-    setTextChanges(lines);
-
-    const oldMatch = text.match(/Old image: (https?:\/\/\S+)/);
-    const newMatch = text.match(/New image: (https?:\/\/\S+)/);
-    setOldImageUrl(oldMatch?.[1] || null);
-    setNewImageUrl(newMatch?.[1] || null);
+  const handleSeeChanges = (comment) => {
+    setSelectedUpdateComment(comment);
   };
 
   const canDelete =
@@ -355,7 +339,7 @@ export default function TicketDetailPage() {
                       </p>
                       <button
                         className="see-changes-btn"
-                        onClick={() => handleSeeChanges(c.comment)}
+                        onClick={() => handleSeeChanges(c)}
                       >
                         See Changes
                       </button>
@@ -363,7 +347,7 @@ export default function TicketDetailPage() {
                   ) : (
                     <p>{c.comment}</p>
                   )}
-                  {c.imageUrl && (
+                  {c.imageUrl && !c.comment.startsWith("🔄 Ticket updated:") && (
                     <button onClick={() => setPreviewImage(c.imageUrl)}>
                       📷 Screenshot
                     </button>
@@ -404,31 +388,40 @@ export default function TicketDetailPage() {
         </div>
       )}
 
-      {previewChanges && (
-        <div className="preview-modal" onClick={() => setPreviewChanges(null)}>
+      {selectedUpdateComment && (
+        <div className="preview-modal" onClick={() => setSelectedUpdateComment(null)}>
           <div className="preview-content" onClick={(e) => e.stopPropagation()}>
             <h3>📋 Ticket Changes</h3>
             <p className="change-preview">📝 Changes made to the ticket.</p>
-            {textChanges.length > 0 && <pre>{textChanges.join("\n")}</pre>}
-            {oldImageUrl && oldImageUrl.startsWith("http") && (
+            {(() => {
+              const lines = (selectedUpdateComment.comment || "")
+                .split("\n")
+                .filter((line) =>
+                  ["Title:", "Description:", "Priority:", "Assigned To:"].some(
+                    (prefix) => line.startsWith(prefix)
+                  )
+                );
+              return lines.length > 0 ? <pre>{lines.join("\n")}</pre> : null;
+            })()}
+            {selectedUpdateComment.oldImageUrl && (
               <button
                 className="image-button"
-                onClick={() => setPreviewImage(oldImageUrl)}
+                onClick={() => setPreviewImage(selectedUpdateComment.oldImageUrl)}
               >
                 🖼️ Old Image
               </button>
             )}
-            {newImageUrl && newImageUrl.startsWith("http") && (
+            {selectedUpdateComment.imageUrl && (
               <button
                 className="image-button"
-                onClick={() => setPreviewImage(newImageUrl)}
+                onClick={() => setPreviewImage(selectedUpdateComment.imageUrl)}
               >
                 🆕 New Image
               </button>
             )}
             <button
               className="close-btn"
-              onClick={() => setPreviewChanges(null)}
+              onClick={() => setSelectedUpdateComment(null)}
             >
               Close
             </button>

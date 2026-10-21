@@ -361,6 +361,9 @@ namespace Tickify.Migrations
                     b.Property<string>("ImageUrl")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("OldImageKey")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<int>("TicketId")
                         .HasColumnType("int");
 

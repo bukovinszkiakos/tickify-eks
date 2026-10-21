@@ -291,36 +291,21 @@ namespace Tickify.Services
             if (changes.Any())
             {
                 var commentText = "🔄 Ticket updated:\n" + string.Join("\n", changes);
-                if (imageChanged && !string.IsNullOrEmpty(newImageUrl))
-                {
-                    if (!string.IsNullOrEmpty(oldImageUrl))
-                    {
-                        var oldPresignedUrl = await _fileStorageService.GetFileUrlAsync(oldImageUrl);
-                        if (!string.IsNullOrEmpty(oldPresignedUrl))
-                            commentText += $"\nOld image: {oldPresignedUrl}";
-                    }
-                    var newPresignedUrl = await _fileStorageService.GetFileUrlAsync(newImageUrl);
-                    if (!string.IsNullOrEmpty(newPresignedUrl))
-                        commentText += $"\nNew image: {newPresignedUrl}";
-                }
 
+                // Pass S3 keys (not presigned URLs) so the API can generate fresh presigned
+                // URLs on demand. The old image is intentionally NOT deleted — it must remain
+                // in S3 for as long as the history comment references it.
                 var user = await _userManager.FindByIdAsync(userId);
-                await _ticketCommentService.AddCommentAsync(ticket.Id, commentText, userId, user?.UserName ?? "Unknown", null);
+                await _ticketCommentService.AddCommentAsync(
+                    ticket.Id,
+                    commentText,
+                    userId,
+                    user?.UserName ?? "Unknown",
+                    imageChanged ? newImageUrl : null,
+                    imageChanged ? oldImageUrl : null);
             }
 
             await _ticketRepository.SaveChangesAsync();
-
-            if (imageChanged && !string.IsNullOrEmpty(oldImageUrl))
-            {
-                try
-                {
-                    await _fileStorageService.DeleteFileAsync(oldImageUrl);
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"S3 delete failed for key '{oldImageUrl}': {ex.Message}");
-                }
-            }
         }
 
 
@@ -404,6 +389,12 @@ namespace Tickify.Services
 
             var imageKey = ticket.ImageUrl;
 
+            // Capture comment image keys before cascade-delete removes the comment rows.
+            var commentImageKeys = await _dbContext.TicketComments
+                .Where(c => c.TicketId == id)
+                .Select(c => new { c.ImageUrl, c.OldImageKey })
+                .ToListAsync();
+
             var oldNotifications = _dbContext.Notifications
                 .Where(n => n.TicketId == ticket.Id.ToString());
             _dbContext.Notifications.RemoveRange(oldNotifications);
@@ -435,6 +426,26 @@ namespace Tickify.Services
                 catch (Exception ex)
                 {
                     Console.Error.WriteLine($"S3 delete failed for key '{imageKey}': {ex.Message}");
+                }
+            }
+
+            // Delete all S3 objects referenced by comment history (user-attached and image-change history).
+            // Distinct() prevents double-deleting a key that appears in both ImageUrl and OldImageKey.
+            var allCommentKeys = commentImageKeys
+                .SelectMany(k => new[] { k.ImageUrl, k.OldImageKey })
+                .Where(k => !string.IsNullOrEmpty(k))
+                .Distinct()
+                .ToList();
+
+            foreach (var key in allCommentKeys)
+            {
+                try
+                {
+                    await _fileStorageService.DeleteFileAsync(key!);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"S3 delete failed for comment key '{key}': {ex.Message}");
                 }
             }
         }

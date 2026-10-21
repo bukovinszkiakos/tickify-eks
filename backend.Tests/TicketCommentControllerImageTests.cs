@@ -66,7 +66,7 @@ public class TicketCommentControllerImageTests
             .ReturnsAsync("img/test.jpg");
         commentMock.Setup(c => c.AddCommentAsync(
             It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(),
-            It.IsAny<string>(), It.IsAny<string?>()))
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .ThrowsAsync(new KeyNotFoundException("Ticket not found."));
         fsMock.Setup(s => s.DeleteFileAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
 
@@ -87,7 +87,7 @@ public class TicketCommentControllerImageTests
             .ReturnsAsync("img/test.jpg");
         commentMock.Setup(c => c.AddCommentAsync(
             It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(),
-            It.IsAny<string>(), It.IsAny<string?>()))
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .ThrowsAsync(new KeyNotFoundException("Ticket not found."));
         fsMock.Setup(s => s.DeleteFileAsync(It.IsAny<string>())).ThrowsAsync(new Exception("S3 error"));
 
@@ -105,7 +105,7 @@ public class TicketCommentControllerImageTests
 
         commentMock.Setup(c => c.AddCommentAsync(
             It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(),
-            It.IsAny<string>(), It.IsAny<string?>()))
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .ThrowsAsync(new KeyNotFoundException("Ticket not found."));
 
         var controller = BuildController(commentMock, fsMock);
@@ -167,7 +167,7 @@ public class TicketCommentControllerImageTests
             .ReturnsAsync("https://cdn.example.com/img/valid.jpg");
         commentMock.Setup(c => c.AddCommentAsync(
             It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string>(),
-            It.IsAny<string>(), It.IsAny<string?>()))
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()))
             .Returns(Task.CompletedTask);
 
         var controller = BuildController(commentMock, fsMock);

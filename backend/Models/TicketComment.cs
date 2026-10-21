@@ -11,6 +11,7 @@ namespace Tickify.Models
         public IdentityUser Commenter { get; set; } = null!;
         public required string Comment { get; set; }
         public string? ImageUrl { get; set; }
+        public string? OldImageKey { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.Now;
 
         public required string CommenterName { get; set; }
