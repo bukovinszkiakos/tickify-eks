@@ -55,6 +55,7 @@ done
 unset _arg
 
 
+
 step "Checking prerequisites"
 
 for cmd in terraform aws helm kubectl gh openssl; do
