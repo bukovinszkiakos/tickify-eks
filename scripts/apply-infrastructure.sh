@@ -6,6 +6,7 @@ TERRAFORM_DIR="$(cd "${SCRIPT_DIR}/../terraform" && pwd)"
 PLAN_FILE="${TERRAFORM_DIR}/tfplan"
 
 
+
 step() { printf "\n>>> %s\n" "$1"; }
 ok()   { printf "[OK]    %s\n" "$1"; }
 
