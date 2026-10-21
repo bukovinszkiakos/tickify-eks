@@ -241,9 +241,26 @@ terraform init \
 # Runs only on the skip path (_DB_SECRET_EXISTS=true, TF_VAR_db_password
 # unset). Normal repeat runs exit immediately when the RDS is found in state.
 if [[ "${_DB_SECRET_EXISTS}" == "true" ]] && [[ -z "${TF_VAR_db_password:-}" ]]; then
+  _S3_STATE_RC=0
+  _S3_STATE_COUNT="$(aws s3api list-objects-v2 \
+    --bucket "${STATE_BUCKET}" \
+    --prefix "terraform/tickify.tfstate" \
+    --max-items 1 \
+    --query 'length(Contents[?Key==`terraform/tickify.tfstate`])' \
+    --output text \
+    --region "${AWS_REGION}" 2>/dev/null)" || _S3_STATE_RC=$?
+
   _STATE_RC=0
-  _STATE_OUT="$(terraform state list module.rds.aws_db_instance.this 2>/dev/null)" \
-    || _STATE_RC=$?
+  _STATE_OUT=""
+  if [[ "${_S3_STATE_RC}" -ne 0 ]]; then
+    _STATE_RC="${_S3_STATE_RC}"
+  elif [[ "${_S3_STATE_COUNT}" == "1" ]]; then
+    _STATE_OUT="$(terraform state list module.rds.aws_db_instance.this 2>/dev/null)" \
+      || _STATE_RC=$?
+  elif [[ "${_S3_STATE_COUNT}" != "0" ]] && [[ "${_S3_STATE_COUNT}" != "None" ]]; then
+    _STATE_RC=1
+  fi
+  unset _S3_STATE_RC _S3_STATE_COUNT
 
   if [[ "${_STATE_RC}" -ne 0 ]]; then
     fail "Terraform state could not be read (exit code ${_STATE_RC}). Cannot confirm whether an RDS instance already exists. Resolve the state backend issue and rerun bootstrap.sh."

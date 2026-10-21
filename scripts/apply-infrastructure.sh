@@ -92,9 +92,26 @@ terraform init \
 # lifecycle { ignore_changes = [password] } in the RDS module means Terraform
 # never updates the password for an existing instance — any value (including
 # the variable default) is safe to pass on repeat runs.
+_S3_STATE_RC=0
+_S3_STATE_COUNT="$(aws s3api list-objects-v2 \
+  --bucket "${STATE_BUCKET}" \
+  --prefix "terraform/tickify.tfstate" \
+  --max-items 1 \
+  --query 'length(Contents[?Key==`terraform/tickify.tfstate`])' \
+  --output text \
+  --region "${AWS_REGION}" 2>/dev/null)" || _S3_STATE_RC=$?
+
 _RDS_STATE_RC=0
-_RDS_STATE_OUT="$(terraform state list module.rds.aws_db_instance.this 2>/dev/null)" \
-  || _RDS_STATE_RC=$?
+_RDS_STATE_OUT=""
+if [[ "${_S3_STATE_RC}" -ne 0 ]]; then
+  _RDS_STATE_RC="${_S3_STATE_RC}"
+elif [[ "${_S3_STATE_COUNT}" == "1" ]]; then
+  _RDS_STATE_OUT="$(terraform state list module.rds.aws_db_instance.this 2>/dev/null)" \
+    || _RDS_STATE_RC=$?
+elif [[ "${_S3_STATE_COUNT}" != "0" ]] && [[ "${_S3_STATE_COUNT}" != "None" ]]; then
+  _RDS_STATE_RC=1
+fi
+unset _S3_STATE_RC _S3_STATE_COUNT
 
 if [[ "${_RDS_STATE_RC}" -ne 0 ]]; then
   fail "Terraform state could not be read (exit code ${_RDS_STATE_RC}). Resolve the state backend issue and rerun apply-infrastructure.sh."
