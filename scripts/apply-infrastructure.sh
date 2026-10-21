@@ -55,6 +55,11 @@ STATE_BUCKET="tickify-terraform-state-${_ACCOUNT_ID}"
 ok "AWS account: ${_ACCOUNT_ID}"
 unset _ACCOUNT_ID
 
+export TF_VAR_developer_iam_arn
+TF_VAR_developer_iam_arn="$(aws sts get-caller-identity --query Arn --output text 2>/dev/null)" \
+  || fail "AWS credentials are not configured or are invalid. Run: aws configure"
+ok "Developer EKS access will be configured"
+
 _STATE_HEAD_RC=0
 _STATE_HEAD_HTTP="$(aws s3api head-bucket \
   --bucket "${STATE_BUCKET}" \
