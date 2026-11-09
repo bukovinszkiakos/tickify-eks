@@ -132,35 +132,6 @@ ok "Secret inventory complete"
 
 step "Collecting required passwords"
 
-if [[ "${_DB_SECRET_EXISTS}" == "false" ]]; then
-  if [[ -z "${TF_VAR_db_password:-}" ]]; then
-    printf "\n"
-    printf "  NOTE: On the first run, this password is used to create the RDS\n"
-    printf "  instance. On subsequent runs, you must enter the SAME original\n"
-    printf "  password -- Terraform does not update an existing RDS password\n"
-    printf "  (lifecycle rule). Entering a different value will NOT change the\n"
-    printf "  database password but WILL store an incorrect connection string.\n"
-    printf "\n"
-    TF_VAR_db_password=""
-    while true; do
-      printf "  Database password: "
-      read -rs TF_VAR_db_password || fail "Password input was interrupted. Aborting."
-      printf "\n"
-      [[ -n "${TF_VAR_db_password}" ]] && break
-      printf "  Password must not be empty. Please try again.\n"
-    done
-    export TF_VAR_db_password
-  else
-    printf "\n"
-    printf "  Using pre-exported TF_VAR_db_password.\n"
-    printf "  On a re-run, ensure this matches the original RDS password.\n"
-    printf "\n"
-  fi
-  ok "Database password ready"
-else
-  ok "Database password skipped (DB_CONNECTION_STRING already configured)"
-fi
-
 if [[ "${_ADMIN_SECRET_EXISTS}" == "false" ]]; then
   printf "  Admin seed password: "
   read -rs _SEEDING_ADMIN_PASSWORD || fail "Password input was interrupted. Aborting."
@@ -216,45 +187,74 @@ terraform init \
   -backend-config="region=${AWS_REGION}"
 
 
-# -- Destroy+recreate guard ----------------------------------------------------
-# If DB_CONNECTION_STRING exists but TF_VAR_db_password is not set,
-# check whether an RDS instance actually exists in Terraform state.
-# If infrastructure was previously destroyed, the secret might still exist
-# but the RDS instance does not -- a new password is needed.
-if [[ "${_DB_SECRET_EXISTS}" == "true" ]] && [[ -z "${TF_VAR_db_password:-}" ]]; then
-  # Capture the output and exit code separately so a backend access failure
-  # (non-zero exit) is not silently treated as "RDS not found" (empty output).
-  _STATE_RDS=""
-  _STATE_RC=0
-  _STATE_RDS="$(terraform state list module.rds.aws_db_instance.this 2>&1)" \
-    || _STATE_RC=$?
-  if [[ "${_STATE_RC}" -ne 0 ]]; then
+step "Checking Terraform state for existing RDS instance"
+
+# Capture the output and exit code separately so a backend access failure
+# (non-zero exit) is not silently treated as "RDS not found" (empty output).
+_STATE_RDS=""
+_STATE_RC=0
+_STATE_RDS="$(terraform state list module.rds.aws_db_instance.this 2>&1)" \
+  || _STATE_RC=$?
+
+if [[ "${_STATE_RC}" -ne 0 ]]; then
+  # On the very first deployment the remote state object does not exist yet.
+  # Terraform exits non-zero with this exact message -- that is not a backend
+  # failure, it simply means no infrastructure has been deployed yet.
+  if [[ "${_STATE_RDS}" == *"No state file was found!"* ]]; then
+    _STATE_RDS=""
+  else
     fail "Failed to read Terraform state while checking for an existing RDS instance. Error: ${_STATE_RDS}"
   fi
-  if [[ -z "${_STATE_RDS}" ]]; then
+fi
+
+if [[ -n "${_STATE_RDS}" ]] && [[ "${_DB_SECRET_EXISTS}" == "true" ]]; then
+  # RDS exists in Terraform state and the GitHub secret is already present.
+  # The password is not needed for this run.
+  ok "RDS instance confirmed in Terraform state -- database password not required"
+else
+  # The database password is required in this branch.  Two sub-cases reach here:
+  #   - RDS exists in state but DB_CONNECTION_STRING is missing from GitHub.
+  #   - No RDS in state (fresh deployment or re-deployment after a destroy).
+  _DB_SECRET_EXISTS=false
+
+  if [[ -z "${TF_VAR_db_password:-}" ]]; then
     printf "\n"
-    printf "  [WARNING] DB_CONNECTION_STRING secret exists, but the Terraform state\n"
-    printf "  contains no RDS instance. The infrastructure may have been previously\n"
-    printf "  destroyed. A real database password is required to create a new RDS\n"
-    printf "  instance; DB_CONNECTION_STRING will be overwritten with the new\n"
-    printf "  connection string after a successful deployment.\n"
+    if [[ -n "${_STATE_RDS}" ]]; then
+      printf "  RDS instance found in Terraform state but DB_CONNECTION_STRING\n"
+      printf "  is missing from GitHub secrets. Enter the ORIGINAL database\n"
+      printf "  password -- Terraform does not update an existing RDS password\n"
+      printf "  (lifecycle ignore_changes). The connection string will be created\n"
+      printf "  in GitHub secrets after a successful apply.\n"
+    else
+      printf "  No RDS instance found in Terraform state.\n"
+      printf "  A database password is required to create a new RDS instance.\n"
+      printf "  If you are re-deploying after a destroy, enter the SAME original\n"
+      printf "  password -- Terraform does not update an existing RDS password\n"
+      printf "  (lifecycle ignore_changes). Entering a different value will NOT\n"
+      printf "  change the database password but WILL store an incorrect connection\n"
+      printf "  string in GitHub secrets.\n"
+    fi
     printf "\n"
     TF_VAR_db_password=""
     while true; do
-      printf "  Database password for new RDS instance: "
+      printf "  Database password: "
       read -rs TF_VAR_db_password || fail "Password input was interrupted. Aborting."
       printf "\n"
       [[ -n "${TF_VAR_db_password}" ]] && break
       printf "  Password must not be empty. Please try again.\n"
     done
     export TF_VAR_db_password
-    _DB_SECRET_EXISTS=false
-    ok "Database password collected for new RDS instance"
   else
-    ok "RDS instance confirmed in Terraform state -- password not required"
+    printf "  Using pre-exported TF_VAR_db_password.\n"
   fi
-  unset _STATE_RDS _STATE_RC
+
+  if [[ -n "${_STATE_RDS}" ]]; then
+    ok "Database password ready -- DB_CONNECTION_STRING will be created after apply"
+  else
+    ok "Database password ready for new RDS instance"
+  fi
 fi
+unset _STATE_RDS _STATE_RC
 
 
 step "Running: terraform validate"

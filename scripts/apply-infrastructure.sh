@@ -125,7 +125,14 @@ _STATE_RDS="$(terraform state list module.rds.aws_db_instance.this 2>&1)" \
   || _STATE_RC=$?
 
 if [[ "${_STATE_RC}" -ne 0 ]]; then
-  fail "Failed to read Terraform state while checking for an existing RDS instance. Error: ${_STATE_RDS}"
+  # On the very first deployment the remote state object does not exist yet.
+  # Terraform exits non-zero with this exact message -- that is not a backend
+  # failure, it simply means no infrastructure has been deployed yet.
+  if [[ "${_STATE_RDS}" == *"No state file was found!"* ]]; then
+    _STATE_RDS=""
+  else
+    fail "Failed to read Terraform state while checking for an existing RDS instance. Error: ${_STATE_RDS}"
+  fi
 fi
 
 if [[ -n "${_STATE_RDS}" ]]; then
