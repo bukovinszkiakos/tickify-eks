@@ -2,9 +2,9 @@ terraform {
   required_version = ">= 1.10"
 
   # bucket and region are not hardcoded here — they are supplied at terraform init
-  # time via -backend-config by scripts/bootstrap.sh and scripts/destroy.sh.
-  # The bucket name is derived dynamically from the current AWS account ID:
-  #   tickify-terraform-state-<ACCOUNT_ID>
+  # time via -backend-config by all three scripts (bootstrap.sh, apply-infrastructure.sh,
+  # destroy.sh). The bucket name is derived from the current AWS account ID:
+  #   akos-tickify-tfstate-<ACCOUNT_ID>
   # Run ./scripts/bootstrap.sh to initialise; do not run terraform init directly.
   backend "s3" {
     key          = "terraform/tickify.tfstate"

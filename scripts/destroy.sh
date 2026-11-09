@@ -4,6 +4,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TERRAFORM_DIR="$(cd "${SCRIPT_DIR}/../terraform" && pwd)"
 
+# -- Configuration --------------------------------------------------------------
+AWS_PROFILE="tickify-school"
+AWS_REGION="eu-central-1"
+
+# Export AWS_PROFILE so both the AWS CLI and Terraform use the correct account.
+# Without this, the [default] profile pointing to a different account may be used.
+export AWS_PROFILE
+
+# These two constants identify ALB and security group resources owned by the
+# cluster. They are used in Phase 4 and Phase 5 to avoid touching resources
+# that belong to other clusters or projects in the same AWS account.
 ALB_CLUSTER_TAG_VALUE="owned"
 ALB_SG_TAG_KEY="elbv2.k8s.aws/cluster"
 
@@ -12,57 +23,51 @@ ok()    { printf "[OK]    %s\n" "$1"; }
 warn()  { printf "[WARN]  %s\n" "$1" >&2; }
 fail()  { printf "\n[ERROR] %s\n" "$1" >&2; exit 1; }
 
-# ── Region: read from terraform.tfvars or TF_VAR_region ──────────────────────
-_TF_REGION_RAW=""
-if [[ -f "${TERRAFORM_DIR}/terraform.tfvars" ]]; then
-  _TF_REGION_RAW="$(grep -E '^\s*region\s*=' "${TERRAFORM_DIR}/terraform.tfvars" \
-    | grep -v '^\s*#' \
-    | sed 's/[^"]*"\([^"]*\)".*/\1/' \
-    | head -1)"
-fi
-if [[ -z "${_TF_REGION_RAW}" ]]; then
-  _TF_REGION_RAW="${TF_VAR_region:-}"
-fi
-[[ -z "${_TF_REGION_RAW}" ]] && \
-  fail "Cannot determine AWS region. Set 'region = \"...\"' in terraform.tfvars or export TF_VAR_region before running destroy.sh."
-AWS_REGION="${_TF_REGION_RAW}"
-unset _TF_REGION_RAW
-# ─────────────────────────────────────────────────────────────────────────────
-
 
 # ──────────────────────────────────────────────────────────────────────────────
 step "Phase 0: Safety checks and identifier capture"
 # ──────────────────────────────────────────────────────────────────────────────
 
-_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text 2>/dev/null)" \
-  || fail "AWS credentials are not configured or are invalid. Run: aws configure"
-STATE_BUCKET="tickify-terraform-state-${_ACCOUNT_ID}"
-ok "AWS account: ${_ACCOUNT_ID}"
+AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text 2>/dev/null)" \
+  || fail "AWS credentials are not configured or are invalid. Check your AWS_PROFILE setting."
 
-_ACTUAL_REGION="$(aws configure get region 2>/dev/null || echo "")"
-if [[ -z "${_ACTUAL_REGION}" ]]; then
-  _ACTUAL_REGION="${AWS_DEFAULT_REGION:-}"
+if [[ "${AWS_ACCOUNT_ID}" != "905030436561" ]]; then
+  fail "Wrong AWS account. Expected 905030436561 but got ${AWS_ACCOUNT_ID}. Check your AWS_PROFILE setting."
 fi
-if [[ "${_ACTUAL_REGION}" != "${AWS_REGION}" ]]; then
-  fail "Region mismatch. Configured AWS region is '${_ACTUAL_REGION}' but terraform.tfvars specifies '${AWS_REGION}'. Aborting to protect unrelated regions."
-fi
-ok "AWS region verified: ${_ACTUAL_REGION}"
-unset _ACTUAL_REGION
 
+STATE_BUCKET="akos-tickify-tfstate-${AWS_ACCOUNT_ID}"
+ok "AWS account: ${AWS_ACCOUNT_ID}"
 ok "State bucket: ${STATE_BUCKET}"
-_STATE_HEAD_RC=0
-_STATE_HEAD_HTTP="$(aws s3api head-bucket \
-  --bucket "${STATE_BUCKET}" \
-  --region "${AWS_REGION}" 2>&1)" || _STATE_HEAD_RC=$?
 
-if [[ "${_STATE_HEAD_RC}" -eq 0 ]]; then
-  ok "State bucket accessible"
-elif printf '%s' "${_STATE_HEAD_HTTP}" | grep -qi "403\|Forbidden\|Access Denied"; then
-  fail "State bucket '${STATE_BUCKET}' exists but cannot be accessed. Check AWS credentials and IAM permissions."
-else
-  fail "State bucket '${STATE_BUCKET}' does not exist. Run ./scripts/bootstrap.sh first to provision the infrastructure."
+# Confirm the configured region is reachable by calling the EC2 AZ list.
+# A missing or empty result means the region name is wrong or access is denied.
+_REGION_CHECK=""
+_REGION_RC=0
+_REGION_CHECK="$(aws ec2 describe-availability-zones \
+  --region "${AWS_REGION}" \
+  --query 'AvailabilityZones[0].RegionName' \
+  --output text 2>&1)" \
+  || _REGION_RC=$?
+if [[ "${_REGION_RC}" -ne 0 ]]; then
+  fail "AWS region '${AWS_REGION}' is not accessible. Check your AWS_PROFILE and region settings. Error: ${_REGION_CHECK}"
 fi
-unset _STATE_HEAD_RC _STATE_HEAD_HTTP
+if [[ -z "${_REGION_CHECK}" ]] || [[ "${_REGION_CHECK}" == "None" ]]; then
+  fail "AWS region '${AWS_REGION}' returned no usable result. Check your AWS_PROFILE and region settings."
+fi
+ok "AWS region verified: ${_REGION_CHECK}"
+unset _REGION_CHECK _REGION_RC
+
+_STATE_HEAD_RC=0
+aws s3api head-bucket \
+  --bucket "${STATE_BUCKET}" \
+  --region "${AWS_REGION}" &>/dev/null \
+  || _STATE_HEAD_RC=$?
+
+if [[ "${_STATE_HEAD_RC}" -ne 0 ]]; then
+  fail "State bucket '${STATE_BUCKET}' is not accessible (exit ${_STATE_HEAD_RC}). Run scripts/bootstrap.sh first to provision the infrastructure."
+fi
+ok "State bucket accessible"
+unset _STATE_HEAD_RC
 
 cd "${TERRAFORM_DIR}"
 
@@ -73,39 +78,28 @@ terraform init -reconfigure \
   -backend-config="region=${AWS_REGION}" \
   >/dev/null
 
-# ── Infrastructure identifiers ───────────────────────────────────────────────
+# -- Infrastructure identifiers ───────────────────────────────────────────────
 # All four identifiers must be known before Phase 1 (confirmation gate) and
 # before any destructive AWS command executes. When a Terraform output is absent
 # (e.g. partial state loss), each identifier falls back to the deterministic
 # formula used by its Terraform module.
 
 _TF_CLUSTER_RAW="$(terraform output -raw cluster_name 2>/dev/null)" || true
-if [[ "${_TF_CLUSTER_RAW}" =~ ^[a-z][a-z0-9-]+$ ]]; then
+if [[ -n "${_TF_CLUSTER_RAW}" ]]; then
   CLUSTER_NAME="${_TF_CLUSTER_RAW}"
   ok "Cluster name: ${CLUSTER_NAME}"
 else
   # Output missing — infrastructure may be partially destroyed or state cleared.
   # Derive from the same formula the EKS module uses: "${var.name}-eks".
-  _TF_NAME_RAW=""
-  if [[ -f "${TERRAFORM_DIR}/terraform.tfvars" ]]; then
-    _TF_NAME_RAW="$(grep -E '^\s*name\s*=' "${TERRAFORM_DIR}/terraform.tfvars" \
-      | grep -v '^\s*#' \
-      | sed 's/[^"]*"\([^"]*\)".*/\1/' \
-      | head -1)"
-  fi
-  CLUSTER_NAME="${_TF_NAME_RAW:-akos-tickify}-eks"
-  unset _TF_NAME_RAW
-  if [[ ! "${CLUSTER_NAME}" =~ ^[a-z][a-z0-9-]+$ ]]; then
-    fail "Cannot determine cluster name: neither Terraform state nor terraform.tfvars provides a valid 'name'. Set 'name = ...' in terraform.tfvars and retry."
-  fi
-  warn "cluster_name not in Terraform state — using derived value: ${CLUSTER_NAME}"
+  CLUSTER_NAME="akos-tickify-eks"
+  warn "cluster_name not in Terraform state — using default: ${CLUSTER_NAME}"
 fi
 unset _TF_CLUSTER_RAW
 
 _TF_RDS_EP="$(terraform output -raw rds_endpoint 2>/dev/null)" || true
 _TF_RDS_HOST="${_TF_RDS_EP%%:*}"
 RDS_IDENTIFIER="${_TF_RDS_HOST%%.*}"
-if [[ "${RDS_IDENTIFIER}" =~ ^[a-z][a-z0-9-]+$ ]]; then
+if [[ -n "${RDS_IDENTIFIER}" ]]; then
   ok "RDS identifier: ${RDS_IDENTIFIER}"
 else
   # modules/rds/main.tf: identifier = "${var.name}-db"
@@ -116,7 +110,7 @@ unset _TF_RDS_EP _TF_RDS_HOST
 
 _TF_ECR_BE_URL="$(terraform output -raw ecr_repository_url 2>/dev/null)" || true
 ECR_BACKEND_REPO="${_TF_ECR_BE_URL##*/}"
-if [[ "${ECR_BACKEND_REPO}" =~ ^[a-z][a-z0-9/_.-]+$ ]]; then
+if [[ -n "${ECR_BACKEND_REPO}" ]]; then
   ok "Backend ECR repository: ${ECR_BACKEND_REPO}"
 else
   # modules/ecr/main.tf: name = "${var.name}-backend"
@@ -127,7 +121,7 @@ unset _TF_ECR_BE_URL
 
 _TF_ECR_FE_URL="$(terraform output -raw frontend_ecr_repository_url 2>/dev/null)" || true
 ECR_FRONTEND_REPO="${_TF_ECR_FE_URL##*/}"
-if [[ "${ECR_FRONTEND_REPO}" =~ ^[a-z][a-z0-9/_.-]+$ ]]; then
+if [[ -n "${ECR_FRONTEND_REPO}" ]]; then
   ok "Frontend ECR repository: ${ECR_FRONTEND_REPO}"
 else
   # modules/ecr/main.tf: name = "${var.name}-frontend"
@@ -143,7 +137,7 @@ ALB_CLUSTER_TAG_KEY="kubernetes.io/cluster/${CLUSTER_NAME}"
 # Validate the terraform output before trusting it: Terraform warning text
 # (e.g. "No outputs found") must never become a VPC filter value.
 _TF_VPC_RAW="$(terraform output -raw vpc_id 2>/dev/null)" || true
-if [[ "${_TF_VPC_RAW}" =~ ^vpc-[0-9a-f]+$ ]]; then
+if [[ -n "${_TF_VPC_RAW}" ]] && [[ "${_TF_VPC_RAW}" != "None" ]]; then
   _VPC_ID="${_TF_VPC_RAW}"
   ok "VPC ID captured from Terraform state: ${_VPC_ID}"
 else
@@ -161,54 +155,7 @@ else
   fi
 fi
 unset _TF_VPC_RAW
-
-# ── Uploads bucket ────────────────────────────────────────────────────────────
-# S3 bucket names are lowercase alphanumeric + hyphens only; any other output
-# (Terraform warning text contains spaces/newlines) is rejected as invalid.
-_TF_BUCKET_RAW="$(terraform output -raw bucket_name 2>/dev/null)" || true
-if [[ "${_TF_BUCKET_RAW}" =~ ^[a-z0-9][a-z0-9-]+[a-z0-9]$ ]] && \
-   [[ "${_TF_BUCKET_RAW}" != "${STATE_BUCKET}" ]]; then
-  _BUCKET_NAME="${_TF_BUCKET_RAW}"
-  ok "Uploads bucket captured from Terraform state: ${_BUCKET_NAME}"
-else
-  ok "Uploads bucket not in Terraform state — searching by Project=tickify tag"
-  _BUCKET_NAME=""
-  _CANDIDATES=""
-  while IFS= read -r _B; do
-    [[ -z "${_B}" ]] && continue
-    [[ "${_B}" == "${STATE_BUCKET}" ]] && continue
-    _TAG_VAL="$(aws s3api get-bucket-tagging \
-      --bucket "${_B}" \
-      --region "${AWS_REGION}" \
-      --query 'TagSet[?Key==`Project`].Value' \
-      --output text 2>/dev/null)" || true
-    if [[ "${_TAG_VAL}" == "tickify" ]]; then
-      _CANDIDATES="${_CANDIDATES}${_B}"$'\n'
-    fi
-  done < <(aws s3api list-buckets \
-    --query 'Buckets[].Name' \
-    --output text 2>/dev/null | tr '\t' '\n')
-
-  _CANDIDATE_COUNT="$(printf '%s' "${_CANDIDATES}" | grep -c '[^[:space:]]' || true)"
-
-  if [[ "${_CANDIDATE_COUNT}" -eq 0 ]]; then
-    _BUCKET_NAME=""
-    ok "Uploads bucket not found in AWS — already deleted or never created"
-  elif [[ "${_CANDIDATE_COUNT}" -eq 1 ]]; then
-    _BUCKET_NAME="$(printf '%s' "${_CANDIDATES}" | tr -d '[:space:]')"
-    ok "Uploads bucket discovered: ${_BUCKET_NAME}"
-  else
-    fail "Multiple S3 buckets tagged Project=tickify found (excluding state bucket). Cannot safely determine which to empty. Candidates: $(printf '%s' "${_CANDIDATES}" | tr '\n' ' ')Aborting."
-  fi
-  unset _CANDIDATES _CANDIDATE_COUNT _B _TAG_VAL
-fi
-unset _TF_BUCKET_RAW
-
-if [[ "${_BUCKET_NAME}" == "${STATE_BUCKET}" ]]; then
-  fail "CRITICAL: bucket name resolves to the Terraform state bucket '${STATE_BUCKET}'. Aborting."
-fi
-
-ok "State bucket '${STATE_BUCKET}' will not be touched"
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -248,8 +195,13 @@ ok "Confirmed"
 step "Phase 2: Configuring kubeconfig"
 # ──────────────────────────────────────────────────────────────────────────────
 
-if aws eks describe-cluster --name "${CLUSTER_NAME}" --region "${AWS_REGION}" \
-   --query 'cluster.status' --output text 2>/dev/null | grep -q "ACTIVE"; then
+_CLUSTER_STATUS="$(aws eks describe-cluster \
+  --name "${CLUSTER_NAME}" \
+  --region "${AWS_REGION}" \
+  --query 'cluster.status' \
+  --output text 2>/dev/null)" || true
+
+if [[ "${_CLUSTER_STATUS}" == "ACTIVE" ]]; then
   aws eks update-kubeconfig \
     --name "${CLUSTER_NAME}" \
     --region "${AWS_REGION}"
@@ -259,6 +211,7 @@ else
   warn "EKS cluster '${CLUSTER_NAME}' is not reachable or does not exist. Skipping kubectl phases."
   _CLUSTER_REACHABLE=false
 fi
+unset _CLUSTER_STATUS
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -423,6 +376,7 @@ else
   fi
   unset _EKS_SG_IDS _SG_ID
 fi
+unset _VPC_ID
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -464,106 +418,7 @@ fi
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-step "Phase 8: Emptying S3 uploads bucket (versions and delete markers)"
-# ──────────────────────────────────────────────────────────────────────────────
-
-if [[ -z "${_BUCKET_NAME}" ]]; then
-  ok "Uploads bucket was not found — S3 empty phase skipped"
-elif aws s3api head-bucket --bucket "${_BUCKET_NAME}" --region "${AWS_REGION}" 2>/dev/null; then
-  ok "Bucket '${_BUCKET_NAME}' found — emptying all versions and delete markers"
-
-  # Delete all object versions
-  _VERSIONS="$(aws s3api list-object-versions \
-    --bucket "${_BUCKET_NAME}" \
-    --region "${AWS_REGION}" \
-    --query 'Versions[*].{Key:Key,VersionId:VersionId}' \
-    --output json 2>/dev/null)"
-
-  if [[ "${_VERSIONS}" != "null" ]] && [[ "${_VERSIONS}" != "[]" ]] && [[ -n "${_VERSIONS}" ]]; then
-    aws s3api delete-objects \
-      --bucket "${_BUCKET_NAME}" \
-      --region "${AWS_REGION}" \
-      --delete "{\"Objects\":$(printf '%s' "${_VERSIONS}"),\"Quiet\":true}" \
-      >/dev/null
-    ok "Object versions deleted"
-  else
-    ok "No object versions found"
-  fi
-
-  # Delete all delete markers
-  _MARKERS="$(aws s3api list-object-versions \
-    --bucket "${_BUCKET_NAME}" \
-    --region "${AWS_REGION}" \
-    --query 'DeleteMarkers[*].{Key:Key,VersionId:VersionId}' \
-    --output json 2>/dev/null)"
-
-  if [[ "${_MARKERS}" != "null" ]] && [[ "${_MARKERS}" != "[]" ]] && [[ -n "${_MARKERS}" ]]; then
-    aws s3api delete-objects \
-      --bucket "${_BUCKET_NAME}" \
-      --region "${AWS_REGION}" \
-      --delete "{\"Objects\":$(printf '%s' "${_MARKERS}"),\"Quiet\":true}" \
-      >/dev/null
-    ok "Delete markers removed"
-  else
-    ok "No delete markers found"
-  fi
-
-  unset _VERSIONS _MARKERS
-  ok "Bucket '${_BUCKET_NAME}' emptied — ready for Terraform deletion"
-else
-  ok "Bucket '${_BUCKET_NAME}' not found — already deleted or never created"
-fi
-unset _BUCKET_NAME _VPC_ID
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-step "Phase 9: Emptying Tickify ECR repositories"
-# ──────────────────────────────────────────────────────────────────────────────
-
-for _ECR_REPO in "${ECR_BACKEND_REPO}" "${ECR_FRONTEND_REPO}"; do
-  if ! aws ecr describe-repositories \
-       --repository-names "${_ECR_REPO}" \
-       --region "${AWS_REGION}" &>/dev/null; then
-    ok "ECR repository '${_ECR_REPO}' — not found, skipping"
-    continue
-  fi
-
-  while true; do
-    _IMAGE_IDS="$(aws ecr list-images \
-      --repository-name "${_ECR_REPO}" \
-      --region "${AWS_REGION}" \
-      --max-items 100 \
-      --query 'imageIds' \
-      --output json)"
-
-    if [[ "${_IMAGE_IDS}" == "[]" ]] || [[ "${_IMAGE_IDS}" == "null" ]] || [[ -z "${_IMAGE_IDS}" ]]; then
-      break
-    fi
-
-    aws ecr batch-delete-image \
-      --repository-name "${_ECR_REPO}" \
-      --region "${AWS_REGION}" \
-      --image-ids "${_IMAGE_IDS}" \
-      >/dev/null
-  done
-
-  _REMAINING="$(aws ecr list-images \
-    --repository-name "${_ECR_REPO}" \
-    --region "${AWS_REGION}" \
-    --query 'length(imageIds)' \
-    --output text)"
-
-  if [[ "${_REMAINING}" != "0" ]]; then
-    fail "ECR repository '${_ECR_REPO}' still has ${_REMAINING} image(s) after cleanup. Aborting."
-  fi
-
-  ok "ECR repository '${_ECR_REPO}' — all images deleted"
-done
-unset _ECR_REPO _IMAGE_IDS _REMAINING
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-step "Phase 10: terraform destroy"
+step "Phase 8: terraform destroy"
 # ──────────────────────────────────────────────────────────────────────────────
 
 cd "${TERRAFORM_DIR}"
@@ -578,18 +433,23 @@ ok "Terraform destroy complete"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-step "Phase 11: Final verification"
+step "Phase 9: Final verification"
 # ──────────────────────────────────────────────────────────────────────────────
 
 _RESIDUAL=false
 
-if aws eks describe-cluster --name "${CLUSTER_NAME}" --region "${AWS_REGION}" \
-   --query 'cluster.status' --output text 2>/dev/null | grep -qv "^$"; then
+_CLUSTER_VERIFY="$(aws eks describe-cluster \
+  --name "${CLUSTER_NAME}" \
+  --region "${AWS_REGION}" \
+  --query 'cluster.status' \
+  --output text 2>/dev/null)" || true
+if [[ -n "${_CLUSTER_VERIFY}" ]]; then
   warn "EKS cluster '${CLUSTER_NAME}' still present — manual cleanup may be required"
   _RESIDUAL=true
 else
   ok "EKS cluster '${CLUSTER_NAME}' — gone"
 fi
+unset _CLUSTER_VERIFY
 
 if aws rds describe-db-instances --db-instance-identifier "${RDS_IDENTIFIER}" \
    --region "${AWS_REGION}" &>/dev/null; then

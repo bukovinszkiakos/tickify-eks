@@ -5,6 +5,8 @@ resource "random_id" "suffix" {
 resource "aws_s3_bucket" "uploads" {
   bucket = "${var.project_name}-uploads-${var.environment}-${random_id.suffix.hex}"
 
+  force_destroy = true
+
   lifecycle {
     precondition {
       condition     = length("${var.project_name}-uploads-${var.environment}-${random_id.suffix.hex}") <= 63

@@ -5,120 +5,131 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TERRAFORM_DIR="$(cd "${SCRIPT_DIR}/../terraform" && pwd)"
 PLAN_FILE="${TERRAFORM_DIR}/tfplan"
 
+# -- Configuration --------------------------------------------------------------
+# Change these if your AWS profile name is different.
+AWS_PROFILE="tickify-school"
+AWS_REGION="eu-central-1"
 
+# Export AWS_PROFILE so both the AWS CLI and Terraform use the correct account.
+# Without this, the [default] profile pointing to a different account may be used.
+export AWS_PROFILE
 
+# -- Helper functions -----------------------------------------------------------
 step() { printf "\n>>> %s\n" "$1"; }
 ok()   { printf "[OK]    %s\n" "$1"; }
-
-fail() {
-  printf "\n[ERROR] %s\n" "$1" >&2
-  exit 1
-}
+warn() { printf "[WARN]  %s\n" "$1" >&2; }
+fail() { printf "\n[ERROR] %s\n" "$1" >&2; exit 1; }
 
 cleanup() { rm -f "${PLAN_FILE}"; }
 trap cleanup EXIT
 
-# ── Region: read from terraform.tfvars or TF_VAR_region ──────────────────────
-_TF_REGION_RAW=""
-if [[ -f "${TERRAFORM_DIR}/terraform.tfvars" ]]; then
-  _TF_REGION_RAW="$(grep -E '^\s*region\s*=' "${TERRAFORM_DIR}/terraform.tfvars" \
-    | grep -v '^\s*#' \
-    | sed 's/[^"]*"\([^"]*\)".*/\1/' \
-    | head -1)"
-fi
-if [[ -z "${_TF_REGION_RAW}" ]]; then
-  _TF_REGION_RAW="${TF_VAR_region:-}"
-fi
-[[ -z "${_TF_REGION_RAW}" ]] && \
-  fail "Cannot determine AWS region. Set 'region = \"...\"' in terraform.tfvars or export TF_VAR_region before running apply-infrastructure.sh."
-AWS_REGION="${_TF_REGION_RAW}"
-unset _TF_REGION_RAW
-# ─────────────────────────────────────────────────────────────────────────────
-
 
 step "Checking prerequisites"
 
-if ! command -v terraform &>/dev/null; then
-  fail "terraform is not installed or not in PATH.
-        Install it from: https://developer.hashicorp.com/terraform/install"
+for cmd in terraform aws; do
+  if ! command -v "${cmd}" &>/dev/null; then
+    fail "'${cmd}' is not installed or not in PATH. Please install it and rerun this script."
+  fi
+  ok "${cmd} found"
+done
+
+if [[ ! -f "${TERRAFORM_DIR}/terraform.tfvars" ]]; then
+  fail "terraform/terraform.tfvars not found. Copy terraform.tfvars.example to terraform/terraform.tfvars and fill in your values."
 fi
-ok "$(terraform version | head -1)"
 
-if ! command -v aws &>/dev/null; then
-  fail "aws CLI is not installed or not in PATH.
-        Install it from: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
+
+step "Validating AWS credentials"
+
+# One call returns both the account ID and the caller ARN.
+# read assigns each tab-separated field to a separate variable.
+STS_OUTPUT="$(aws sts get-caller-identity --query '[Account, Arn]' --output text 2>/dev/null)" \
+  || fail "AWS credentials are not configured or are invalid. Check your AWS_PROFILE setting."
+read -r AWS_ACCOUNT_ID CALLER_ARN <<< "${STS_OUTPUT}"
+unset STS_OUTPUT
+
+if [[ "${AWS_ACCOUNT_ID}" != "905030436561" ]]; then
+  fail "Wrong AWS account. Expected 905030436561 but got ${AWS_ACCOUNT_ID}. Check your AWS_PROFILE setting."
 fi
-ok "aws CLI found"
 
-_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text 2>/dev/null)" \
-  || fail "AWS credentials are not configured or are invalid. Run: aws configure"
-STATE_BUCKET="tickify-terraform-state-${_ACCOUNT_ID}"
-ok "AWS account: ${_ACCOUNT_ID}"
-unset _ACCOUNT_ID
-
+TF_VAR_developer_iam_arn="${CALLER_ARN}"
 export TF_VAR_developer_iam_arn
-TF_VAR_developer_iam_arn="$(aws sts get-caller-identity --query Arn --output text 2>/dev/null)" \
-  || fail "AWS credentials are not configured or are invalid. Run: aws configure"
-ok "Developer EKS access will be configured"
+unset CALLER_ARN
+
+ok "AWS account:   ${AWS_ACCOUNT_ID}"
+ok "IAM identity: ${TF_VAR_developer_iam_arn}"
+
+
+step "Verifying AWS region"
+
+# Confirm the configured region is reachable by calling the EC2 AZ list.
+# A missing or empty result means the region name is wrong or access is denied.
+_REGION_CHECK=""
+_REGION_RC=0
+_REGION_CHECK="$(aws ec2 describe-availability-zones \
+  --region "${AWS_REGION}" \
+  --query 'AvailabilityZones[0].RegionName' \
+  --output text 2>&1)" \
+  || _REGION_RC=$?
+if [[ "${_REGION_RC}" -ne 0 ]]; then
+  fail "AWS region '${AWS_REGION}' is not accessible. Check your AWS_PROFILE and region settings. Error: ${_REGION_CHECK}"
+fi
+if [[ -z "${_REGION_CHECK}" ]] || [[ "${_REGION_CHECK}" == "None" ]]; then
+  fail "AWS region '${AWS_REGION}' returned no usable result. Check your AWS_PROFILE and region settings."
+fi
+ok "AWS region verified: ${_REGION_CHECK}"
+unset _REGION_CHECK _REGION_RC
+
+
+step "Verifying Terraform state bucket"
+
+# The state bucket name is derived from the verified account ID.
+# If this bucket does not exist, scripts/bootstrap.sh has not been run yet.
+STATE_BUCKET="akos-tickify-tfstate-${AWS_ACCOUNT_ID}"
 
 _STATE_HEAD_RC=0
-_STATE_HEAD_HTTP="$(aws s3api head-bucket \
+aws s3api head-bucket \
   --bucket "${STATE_BUCKET}" \
-  --region "${AWS_REGION}" 2>&1)" || _STATE_HEAD_RC=$?
+  --region "${AWS_REGION}" &>/dev/null \
+  || _STATE_HEAD_RC=$?
 
-if [[ "${_STATE_HEAD_RC}" -eq 0 ]]; then
-  ok "State bucket accessible: ${STATE_BUCKET}"
-elif printf '%s' "${_STATE_HEAD_HTTP}" | grep -qi "403\|Forbidden\|Access Denied"; then
-  fail "State bucket '${STATE_BUCKET}' exists but is not accessible with the current credentials. Check IAM permissions."
-elif printf '%s' "${_STATE_HEAD_HTTP}" | grep -qi "404\|NoSuchBucket\|Not Found"; then
-  fail "State bucket '${STATE_BUCKET}' does not exist. Run ./scripts/bootstrap.sh first to provision the infrastructure."
-else
-  fail "State bucket '${STATE_BUCKET}' could not be reached (exit ${_STATE_HEAD_RC}). Check network connectivity and AWS configuration."
+if [[ "${_STATE_HEAD_RC}" -ne 0 ]]; then
+  fail "State bucket '${STATE_BUCKET}' is not accessible (exit ${_STATE_HEAD_RC}). Run scripts/bootstrap.sh first to provision the infrastructure and create the state bucket."
 fi
-unset _STATE_HEAD_RC _STATE_HEAD_HTTP
+unset _STATE_HEAD_RC
+
+ok "State bucket accessible: ${STATE_BUCKET}"
 
 
 cd "${TERRAFORM_DIR}"
 ok "Working directory: ${TERRAFORM_DIR}"
 
 
-step "Running: terraform init  (uses the remote S3 backend)"
+step "Running: terraform init"
+
 terraform init \
   -reconfigure \
   -backend-config="bucket=${STATE_BUCKET}" \
   -backend-config="region=${AWS_REGION}"
 
 
-# ── Database password: required only when RDS is not yet in Terraform state ───
+# -- Database password check ---------------------------------------------------
 # lifecycle { ignore_changes = [password] } in the RDS module means Terraform
-# never updates the password for an existing instance — any value (including
-# the variable default) is safe to pass on repeat runs.
-_S3_STATE_RC=0
-_S3_STATE_COUNT="$(aws s3api list-objects-v2 \
-  --bucket "${STATE_BUCKET}" \
-  --prefix "terraform/tickify.tfstate" \
-  --max-keys 1 \
-  --no-paginate \
-  --query 'Contents[0].Key' \
-  --output text \
-  --region "${AWS_REGION}" 2>/dev/null)" || _S3_STATE_RC=$?
+# never updates the password for an existing instance. If RDS is already in
+# Terraform state, the password variable is not required for this run.
+#
+# Capture the output and exit code separately so a backend access failure
+# (non-zero exit) is not silently treated as "RDS not found" (empty output).
+_STATE_RDS=""
+_STATE_RC=0
+_STATE_RDS="$(terraform state list module.rds.aws_db_instance.this 2>&1)" \
+  || _STATE_RC=$?
 
-_RDS_STATE_RC=0
-_RDS_STATE_OUT=""
-if [[ "${_S3_STATE_RC}" -ne 0 ]]; then
-  _RDS_STATE_RC="${_S3_STATE_RC}"
-elif [[ "${_S3_STATE_COUNT}" == "terraform/tickify.tfstate" ]]; then
-  _RDS_STATE_OUT="$(terraform state list module.rds.aws_db_instance.this 2>/dev/null)" \
-    || _RDS_STATE_RC=$?
-elif [[ "${_S3_STATE_COUNT}" != "None" ]]; then
-  _RDS_STATE_RC=1
+if [[ "${_STATE_RC}" -ne 0 ]]; then
+  fail "Failed to read Terraform state while checking for an existing RDS instance. Error: ${_STATE_RDS}"
 fi
-unset _S3_STATE_RC _S3_STATE_COUNT
 
-if [[ "${_RDS_STATE_RC}" -ne 0 ]]; then
-  fail "Terraform state could not be read (exit code ${_RDS_STATE_RC}). Resolve the state backend issue and rerun apply-infrastructure.sh."
-elif [[ -n "${_RDS_STATE_OUT}" ]]; then
-  ok "RDS instance found in Terraform state — database password not required for this run"
+if [[ -n "${_STATE_RDS}" ]]; then
+  ok "RDS instance found in Terraform state -- database password not required for this run"
 else
   # RDS not found in Terraform state.
   # Note: absence from state does not prove that the instance is absent from AWS.
@@ -129,7 +140,7 @@ else
     printf "\n"
     printf "  No RDS instance found in Terraform state.\n"
     printf "  A database password is required to create a new RDS instance.\n"
-    printf "  If you are re-deploying after a destroy, enter the original password —\n"
+    printf "  If you are re-deploying after a destroy, enter the original password --\n"
     printf "  Terraform does not update an existing RDS password (lifecycle ignore_changes).\n"
     printf "\n"
     TF_VAR_db_password=""
@@ -144,8 +155,8 @@ else
   fi
   ok "Database password ready for new RDS instance"
 fi
-unset _RDS_STATE_RC _RDS_STATE_OUT
-# ─────────────────────────────────────────────────────────────────────────────
+unset _STATE_RDS _STATE_RC
+
 
 step "Running: terraform validate"
 terraform validate
@@ -174,6 +185,8 @@ fi
 step "Running: terraform apply"
 terraform apply "${PLAN_FILE}"
 
+unset TF_VAR_developer_iam_arn TF_VAR_db_password
+
 
 step "Infrastructure provisioned successfully. Key outputs for your next steps:"
 
@@ -188,7 +201,7 @@ printf "  ALB controller role ARN:   %s\n" "$(terraform output -raw alb_controll
 printf "\n"
 
 printf "Next steps:\n"
-printf "  For initial setup: run scripts/bootstrap.sh — it configures GitHub\n"
+printf "  For initial setup: run scripts/bootstrap.sh -- it configures GitHub\n"
 printf "  Secrets and Variables and installs the AWS Load Balancer Controller.\n"
 printf "\n"
 printf "  For re-applies: if Terraform outputs changed (e.g. role ARNs, bucket\n"

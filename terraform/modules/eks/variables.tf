@@ -30,3 +30,11 @@ variable "node_subnet_ids" {
   description = "Private subnet IDs for EKS worker nodes"
   type        = list(string)
 }
+
+variable "owner" {
+  type = string
+}
+
+variable "environment" {
+  type = string
+}

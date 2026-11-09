@@ -9,8 +9,8 @@ resource "aws_ecr_repository" "this" {
   tags = {
     Name        = "${var.name}-ecr"
     Project     = "tickify"
-    Owner       = "akos"
-    Environment = "dev"
+    Owner       = var.owner
+    Environment = var.environment
   }
 }
 
@@ -105,8 +105,8 @@ resource "aws_ecr_repository" "frontend" {
   tags = {
     Name        = "${var.name}-ecr-frontend"
     Project     = "tickify"
-    Owner       = "akos"
-    Environment = "dev"
+    Owner       = var.owner
+    Environment = var.environment
   }
 }
 

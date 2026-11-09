@@ -32,6 +32,9 @@ module "eks" {
   node_subnet_ids = module.network.private_subnet_ids
 
   s3_bucket_arn = module.s3.bucket_arn
+
+  owner       = "akos"
+  environment = var.environment
 }
 
 

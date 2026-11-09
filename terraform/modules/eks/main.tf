@@ -38,8 +38,8 @@ resource "aws_eks_cluster" "this" {
   tags = {
     Name        = "${var.name}-eks"
     Project     = "tickify"
-    Owner       = "akos"
-    Environment = "dev"
+    Owner       = var.owner
+    Environment = var.environment
   }
 }
 
@@ -98,8 +98,8 @@ resource "aws_eks_node_group" "this" {
   tags = {
     Name        = "${var.name}-node-group"
     Project     = "tickify"
-    Owner       = "akos"
-    Environment = "dev"
+    Owner       = var.owner
+    Environment = var.environment
   }
 }
 
